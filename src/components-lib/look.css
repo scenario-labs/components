@@ -241,8 +241,6 @@ dl.terms dd { margin: 0; }
 .wipe .line { position: absolute; top: 0; bottom: 0; left: var(--cut, 50%); width: 2px; background: #fff; transform: translateX(-1px); box-shadow: 0 0 12px rgba(0,0,0,.35); pointer-events: none; }
 .wipe .knob { position: absolute; top: 50%; left: var(--cut, 50%); width: 40px; height: 40px; transform: translate(-50%, -50%); border-radius: 50%; background: var(--bg); display: grid; place-items: center; font: 600 .875rem var(--mono); color: var(--primary); pointer-events: none; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
 .wipe input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: ew-resize; margin: 0; }
-.wipe:has(input:focus-visible) .knob { outline: 2px solid var(--primary); outline-offset: 3px; }
-.wipe:has(input:focus-visible) { outline: 2px solid var(--primary); outline-offset: 2px; }
 
 /* notes: one label, one or two sentences */
 .note { border: 1px solid var(--border); border-left: 3px solid var(--primary-light); background: var(--card); padding: .75rem 1rem; border-radius: 0 var(--radius) var(--radius) 0; margin: 1.1rem 0 1.2rem; }
