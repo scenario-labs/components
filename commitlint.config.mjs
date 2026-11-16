@@ -38,6 +38,7 @@ export default {
       "always",
       [
         "handbook", // src/handbook: the Markdown reader, the builder, its look and script
+        "og", // src/og: link-preview cards (BrandFrame, satori, resvg)
         "action", // action.yml: the composite action that builds and assembles a plug-in's site
         "cli", // bin/plugin-site.js: commands and options
         "tests", // test harness only; a test for a product area keeps the product scope

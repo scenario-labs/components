@@ -4,6 +4,7 @@
 //
 //   plugin-site handbook [--config handbook.config.json] [--out <dir>] [--no-pdf] [--quiet]
 //   plugin-site paths [--config handbook.config.json]
+//   plugin-site og --title <title> [--subtitle <line>] [--image <png or jpeg>] --out og.png
 //
 // Run from the plug-in repository (or pass --config with its path). `paths`
 // prints, one per line, the paths the handbook is built from, relative to
@@ -23,16 +24,18 @@ function paths(argv) {
   return 0;
 }
 
-const COMMANDS = { handbook: () => require("../src/handbook/build.js").main, paths: () => paths };
+const COMMANDS = { handbook: () => require("../src/handbook/build.js").main, paths: () => paths, og: () => require("../src/og/index.js").main };
 
 const [command, ...rest] = process.argv.slice(2);
 if (!COMMANDS[command]) {
-  process.stderr.write(`usage: plugin-site handbook [--config handbook.config.json] [--out <dir>] [--no-pdf] [--quiet]\n       plugin-site paths [--config handbook.config.json]\n`);
+  process.stderr.write(`usage: plugin-site handbook [--config handbook.config.json] [--out <dir>] [--no-pdf] [--quiet]\n       plugin-site paths [--config handbook.config.json]\n       plugin-site og --title <title> [--subtitle <line>] [--image <png or jpeg>] --out og.png\n`);
   process.exit(2);
 }
-try {
-  process.exit(COMMANDS[command]()(rest));
-} catch (error) {
-  process.stderr.write(`plugin-site ${command}: ${error.message}\n`);
-  process.exit(1);
-}
+// A command returns its exit code, or a promise of it (og renders asynchronously).
+Promise.resolve()
+  .then(() => COMMANDS[command]()(rest))
+  .then((code) => process.exit(code))
+  .catch((error) => {
+    process.stderr.write(`plugin-site ${command}: ${error.message}\n`);
+    process.exit(1);
+  });
