@@ -111,7 +111,8 @@ td img,th img{max-width:100%;height:auto}
   .table-wrap{overflow:visible}
   thead{display:table-header-group}
   .fig{margin:4mm 0}
-  .fig .zoom{max-width:150mm}
+  .fig .zoom{max-width:150mm;width:auto;display:inline-block}
+  .zoom img{max-height:115mm;width:auto;max-width:100%}
   .fig-clip .zoom{max-width:110mm}
   .shots{gap:5mm;margin:3mm 0 5mm}
   .shots .shot{flex:0 0 42mm}
