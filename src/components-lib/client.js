@@ -1,23 +1,59 @@
-"use strict";
-// The handbook page's behaviour: search (/ focuses it), the light and dark
-// switch, the contents column following the reader, and pictures that
-// enlarge. The page reads fine without it.
-
-const SCRIPT = String.raw`
+// components-lib behaviour, as photoshop.scenario.com behaves: the contents
+// rail (open beside the page, a closed card on narrow screens, the section in
+// view marked), search ("/" focuses it), drag to compare, the film, and
+// pictures that enlarge. A plain browser script: a page loads it with
+// <script src>, or the builder inlines it (components.js, CLIENT). The page
+// reads fine without it.
 (function(){
-  var root=document.documentElement;
-  function store(k,v){try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v);}catch(e){return null;}}
+  // Contents rail
+  var toc=document.getElementById("toc");
+  if(toc){
+    var det=toc.querySelector("details"),mq=window.matchMedia("(max-width: 960px)");
+    function fit(){det.open=!mq.matches;}
+    fit();
+    if(mq.addEventListener)mq.addEventListener("change",fit);else if(mq.addListener)mq.addListener(fit);
+    det.querySelector("summary").addEventListener("click",function(e){if(!mq.matches)e.preventDefault();});
+    toc.addEventListener("click",function(e){if(mq.matches&&e.target.closest("a"))det.open=false;});
+    var marks=[].slice.call(toc.querySelectorAll("a[href^='#']")).map(function(a){
+      var up=a.parentNode.parentNode.closest("li");
+      return {a:a,el:document.getElementById(a.getAttribute("href").slice(1)),up:up?up.firstElementChild:null};
+    }).filter(function(m){return m.el;});
+    var ticking=false;
+    function spy(){
+      ticking=false;
+      if(!marks.length)return;
+      var cur=marks[0];
+      marks.forEach(function(m){if(m.el.getBoundingClientRect().top<=140)cur=m;});
+      if(window.innerHeight+window.scrollY>=document.documentElement.scrollHeight-4)cur=marks[marks.length-1];
+      marks.forEach(function(m){m.a.removeAttribute("aria-current");m.a.classList.remove("in");});
+      cur.a.setAttribute("aria-current","location");
+      if(cur.up)cur.up.classList.add("in");
+      if(!mq.matches){var t=cur.a.offsetTop,h=toc.clientHeight;if(t<toc.scrollTop+40||t>toc.scrollTop+h-60)toc.scrollTop=t-h/3;}
+    }
+    window.addEventListener("scroll",function(){if(!ticking){ticking=true;requestAnimationFrame(spy);}},{passive:true});
+    spy();
+  }
 
-  // Theme
-  var saved=store("handbook-theme");
-  if(saved==="light"||saved==="dark")root.setAttribute("data-theme",saved);
-  var tb=document.getElementById("theme");
-  function current(){var t=root.getAttribute("data-theme");if(t)return t;return window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";}
-  function label(){if(tb){var c=current();tb.setAttribute("aria-label",c==="dark"?"Switch to light":"Switch to dark");}}
-  label();
-  if(tb)tb.addEventListener("click",function(){var n=current()==="dark"?"light":"dark";root.setAttribute("data-theme",n);store("handbook-theme",n);label();});
+  // Drag to compare
+  [].forEach.call(document.querySelectorAll(".wipe"),function(w){
+    var r=w.querySelector("input");
+    if(r)r.addEventListener("input",function(){w.style.setProperty("--cut",r.value+"%");});
+  });
 
-  // Lightbox
+  // The film: its poster until it plays; no broken player
+  var film=document.getElementById("film"),fv=document.getElementById("film-v"),fp=document.getElementById("film-play");
+  if(film&&fv&&fp){
+    fv.addEventListener("error",function(){film.setAttribute("data-state","missing");fv.controls=false;});
+    fp.addEventListener("click",function(){
+      if(film.getAttribute("data-state")==="missing")return;
+      fv.controls=true;
+      var p=fv.play();
+      film.setAttribute("data-state","playing");
+      if(p&&p.catch)p.catch(function(err){if(err&&err.name==="NotAllowedError")return;film.setAttribute("data-state","missing");fv.controls=false;});
+    });
+  }
+
+  // Pictures that enlarge
   var lb=document.getElementById("lightbox");
   if(lb&&lb.showModal){
     var lbImg=lb.querySelector("img"),lbCap=lb.querySelector(".lb-cap");
@@ -31,29 +67,7 @@ const SCRIPT = String.raw`
     lb.addEventListener("click",function(e){if(e.target===lb||e.target===lbImg)lb.close();});
   }
 
-  // Contents: mark the section in view, open its sub-list
-  var links=[].slice.call(document.querySelectorAll(".toc-list a"));
-  var byId={};links.forEach(function(a){byId[a.getAttribute("href").slice(1)]=a;});
-  var heads=[].slice.call(document.querySelectorAll(".handbook h2[id], .handbook h3[id]")).filter(function(h){return byId[h.id];});
-  var active=null;
-  function mark(){
-    var y=(parseInt(getComputedStyle(root).scrollPaddingTop,10)||80)+8,cur=null;
-    for(var i=0;i<heads.length;i++){if(heads[i].getBoundingClientRect().top<=y)cur=heads[i];else break;}
-    var a=cur?byId[cur.id]:null;
-    if(a===active)return;
-    if(active)active.classList.remove("active");
-    links.forEach(function(l){var li=l.parentElement;if(li.parentElement.classList.contains("toc-list"))li.classList.remove("open");});
-    active=a;
-    if(a){a.classList.add("active");var top=a.closest(".toc-list>li");if(top)top.classList.add("open");
-      var side=document.querySelector(".side");if(side&&side.scrollHeight>side.clientHeight){var r=a.getBoundingClientRect(),s=side.getBoundingClientRect();if(r.top<s.top+40||r.bottom>s.bottom-40)side.scrollTop+=r.top-s.top-s.height/3;}}
-  }
-  var ticking=false;
-  window.addEventListener("scroll",function(){if(!ticking){ticking=true;requestAnimationFrame(function(){ticking=false;mark();});}},{passive:true});
-  mark();
-  var box=document.getElementById("side-box");
-  if(box&&window.matchMedia&&matchMedia("(max-width: 900px)").matches)box.removeAttribute("open");
-
-  // Search
+  // Search: entries from the page's search index
   var input=document.getElementById("q"),panel=document.getElementById("q-panel"),list=document.getElementById("q-results"),status=document.getElementById("q-status");
   var data=[];try{data=JSON.parse(document.getElementById("search-index").textContent);}catch(e){}
   data.forEach(function(d){d.lt=d.t.toLowerCase();d.lx=d.x.toLowerCase();});
@@ -62,7 +76,7 @@ const SCRIPT = String.raw`
   // Marks the query words on the raw text, then escapes each piece, so a word
   // such as "amp" or "mark" never matches inside an entity or a tag.
   function hl(s,words){var ws=words.filter(function(w){return w.length>=2;}).map(function(w){return w.replace(/[.*+?^$()|[\]\\{}]/g,"\\$&");});if(!ws.length)return escH(s);return s.split(new RegExp("("+ws.join("|")+")","ig")).map(function(part,i){return i%2?"<mark>"+escH(part)+"</mark>":escH(part);}).join("");}
-  function snippet(d,words){var i=-1;for(var k=0;k<words.length&&i<0;k++)i=d.lx.indexOf(words[k]);if(i<0)return d.x.slice(0,140);var s=Math.max(0,i-50);return (s?"\u2026":"")+d.x.slice(s,s+150)+"\u2026";}
+  function snippet(d,words){var i=-1;for(var k=0;k<words.length&&i<0;k++)i=d.lx.indexOf(words[k]);if(i<0)return d.x.slice(0,140);var s=Math.max(0,i-50);return (s?"…":"")+d.x.slice(s,s+150)+"…";}
   function run(){
     var q=input.value.trim().toLowerCase();
     if(!q){close();return;}
@@ -97,6 +111,3 @@ const SCRIPT = String.raw`
     });
   }
 })();
-`;
-
-module.exports = { SCRIPT };

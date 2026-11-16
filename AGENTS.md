@@ -29,8 +29,12 @@ The builder was ported from photoshop-plugin's `tools/handbook`.
     READMEs add (`<p align>`, `<a>`, `<sub>`, `<h1>`) read as Markdown.
   - `build.js`: chapters from doc sections, links and pictures resolved,
     the web page, the single file and the PDF, and the public-content checks.
-  - `style.js`, `script.js`: the page's look (light and dark, print sheet)
-    and behaviour (search, contents, lightbox). `scenario-logo.svg`.
+  - `style.js`: what the handbook adds to components-lib's look (pictures,
+    screenshot rows, check labels, lightbox, the A4 print sheet).
+    `scenario-logo.svg`.
+- `src/components-lib/`: the plug-in sites' look and components, taken from
+  photoshop.scenario.com: `look.css`, `components.js` (HTML builders),
+  `client.js` (behaviour). README.md, "components-lib".
 - `action.yml`: release lookup, docs restored from the release's commit,
   handbook build, release package with its checksum and attestation.
 - `tools/lint.js`: repository checks (below).

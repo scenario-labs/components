@@ -1,6 +1,6 @@
 "use strict";
 // The built handbook in a real browser (Playwright's Chromium): search, the
-// light and dark switch, the contents column, the lightbox, and the PDF.
+// contents rail, the light look, the lightbox, and the PDF.
 // Needs `pnpm install` and `pnpm exec playwright install chromium`; the PDF
 // test also needs Poppler's pdftotext. CI runs it in the browser job.
 
@@ -64,20 +64,16 @@ test("the handbook page works in a browser", { skip }, async (t) => {
     assert.equal(await page.locator("#q-panel").isHidden(), true);
   });
 
-  await t.test("the contents column marks the section in view", async () => {
-    await page.locator("#changelog").scrollIntoViewIfNeeded();
+  await t.test("the contents rail lists every sub-section and marks the one in view", async () => {
+    assert.ok(await page.locator("#toc ul ul a").first().isVisible(), "sub-sections are open");
     await page.evaluate(() => document.getElementById("changelog").scrollIntoView());
-    await page.waitForFunction(() => document.querySelector('.toc-list a.active')?.getAttribute("href") === "#changelog");
+    await page.waitForFunction(() => document.querySelector('#toc a[aria-current]')?.getAttribute("href") === "#changelog");
   });
 
-  await t.test("the theme switch flips and is remembered", async () => {
-    const before = await page.evaluate(() => document.documentElement.getAttribute("data-theme"));
-    await page.click("#theme");
-    const after = await page.evaluate(() => document.documentElement.getAttribute("data-theme"));
-    assert.ok(after === "light" || after === "dark");
-    assert.notEqual(after, before);
-    await page.reload();
-    assert.equal(await page.evaluate(() => document.documentElement.getAttribute("data-theme")), after);
+  await t.test("the page is light only", async () => {
+    assert.equal(await page.locator("#theme").count(), 0);
+    const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    assert.equal(bg, "rgb(250, 248, 247)");
   });
 
   await t.test("a picture enlarges and closes", async () => {

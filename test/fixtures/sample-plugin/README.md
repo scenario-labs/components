@@ -33,6 +33,10 @@ Pick a model, write a prompt and press **Generate**.
 
 ![Before and after a removal](docs/media/before-after/remove.png)
 
+![Before: the street with the cone](docs/media/before-after/remove.png) ![After: the street without it](docs/media/before-after/remove-after.png)
+
+*Drag to compare.*
+
 *Verified live* on Sample 1.0. The Scenario MCP drives the same actions.
 
 ## Troubleshooting
