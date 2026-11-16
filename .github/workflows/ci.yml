@@ -42,9 +42,11 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      # The builder uses Node's built-in modules only: no install step.
-      - name: The handbook builder against the sample plug-in
-        run: node --test --test-reporter=spec test/config.test.js test/handbook.test.js test/markdown.test.js
+      # satori and resvg, for the link-preview cards, at the lockfile's versions.
+      - name: Install the runtime dependencies
+        run: npx --yes pnpm@12.10.1 install --prod --frozen-lockfile
+      - name: The handbook builder and the link-preview cards against the sample plug-in
+        run: node --test --test-reporter=spec test/config.test.js test/handbook.test.js test/markdown.test.js test/og.test.js
 
   # The built page in Playwright's Chromium (search, theme, contents, lightbox)
   # and the PDF with Poppler's pdftotext.

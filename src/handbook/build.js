@@ -42,7 +42,7 @@ function parseArgs(argv) {
   const opts = { config: "handbook.config.json", out: "", pdf: true, quiet: false };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--no-pdf") opts.pdf = false;
-    if (argv[i] === "--no-og") opts.og = false;
+    else if (argv[i] === "--no-og") opts.og = false;
     else if (argv[i] === "--quiet") opts.quiet = true;
     else if (argv[i] === "--out") opts.out = path.resolve(argv[++i]);
     else if (argv[i] === "--config") opts.config = argv[++i];
