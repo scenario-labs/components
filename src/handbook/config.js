@@ -20,6 +20,9 @@ const DEFAULTS = {
   flow: null,
   gallery: null,
   theme: null,
+  chip: "",
+  accent: "user guide",
+  film: null,
   site: "",
   analytics: ""
 };
@@ -51,9 +54,13 @@ function loadConfig(configPath = "handbook.config.json", cwd = process.cwd()) {
     ids.add(c.id);
     if (!c.parts && !c.generated) fail(file, `chapter "${c.id}" needs "parts" or "generated"`);
     if (c.generated && !["downloads", "licence"].includes(c.generated)) fail(file, `chapter "${c.id}": unknown generated part "${c.generated}"`);
+    if (c.group != null && typeof c.group !== "string") fail(file, `chapter "${c.id}": "group" must be a string`);
+    if (c.part != null && !(Array.isArray(c.part) && c.part.length >= 1 && c.part.length <= 2)) fail(file, `chapter "${c.id}": "part" must be [label] or [label, line]`);
   }
   if (raw.analytics && !/^\/[\w./-]+\.js$/.test(raw.analytics)) fail(file, '"analytics" must be a site-absolute script path such as /page.js');
   if (raw.site && !/^https:\/\/[\w.-]+$/.test(raw.site)) fail(file, '"site" must be an https:// address with no path');
+  if (raw.film && !raw.film.src) fail(file, '"film" needs "src"');
+  if (raw.theme && raw.theme.accentDark) process.stderr.write(`${file}: "theme.accentDark" is no longer used: the handbook is light only\n`);
   if (raw.gallery && !ids.has(raw.gallery.chapter)) fail(file, `"gallery.chapter" names no chapter: ${raw.gallery.chapter}`);
   if (raw.gallery && raw.gallery.show && !ids.has(raw.gallery.show)) fail(file, `"gallery.show" names no chapter: ${raw.gallery.show}`);
   const config = {
@@ -65,6 +72,10 @@ function loadConfig(configPath = "handbook.config.json", cwd = process.cwd()) {
     checks: { ...DEFAULTS.checks, ...(raw.checks || {}) }
   };
   config.media = `${config.media.replace(/\/+$/, "")}/`;
+  // The name chip in the top bar: "Maya" for the brand "for Maya".
+  if (!config.chip) config.chip = config.brand.replace(/^for\s+/i, "");
+  // "theme.accent" was the plug-in's colour before components-lib.
+  if (config.theme && config.theme.accent && !config.theme.chip) config.theme = { ...config.theme, chip: config.theme.accent };
   return { root: path.dirname(file), config };
 }
 

@@ -26,9 +26,10 @@ test("the handbook builds from the plug-in's docs with every link and picture re
   assert.deepEqual(r.problems, []);
   assert.equal(r.version, "1.2.3", "the version comes from the configured file");
   const config = JSON.parse(fs.readFileSync(CONFIG, "utf8"));
-  for (const c of config.chapters) assert.ok(html.includes(`<h2 id="${c.id}">`), `chapter ${c.id}`);
+  for (const c of config.chapters) assert.ok(html.includes(`<section id="${c.id}"`), `chapter ${c.id}`);
   assert.match(html, /<title>Scenario for Sample Handbook<\/title>/);
-  assert.match(html, /<span class="product">for Sample<\/span>/);
+  assert.match(html, /<span class="chip product">Sample<\/span>/, "the name chip comes from the brand");
+  assert.ok(!html.includes('id="theme"') && /<meta name="color-scheme" content="light">/.test(html), "light only, no theme switch");
   assert.match(html, /Every Scenario model inside Sample, priced before you click\./, "the lede is the README's first plain paragraph");
   assert.ok(!fs.existsSync(path.join(out, "CNAME")), "no CNAME");
   assert.ok(!html.includes(".pdf"), "no PDF link without the PDF");
@@ -39,9 +40,10 @@ test("the handbook builds from the plug-in's docs with every link and picture re
   assert.match(html, /<div class="shots n2">(?:<figure class="shot">[\s\S]*?<\/figure>){2}<p class="fig-note">Two views of one result\.<\/p><\/div>/, "pictures side by side share one row and one caption");
   assert.equal(html.split('<p class="fig-note">Two views of one result.').length, 2, "the caption shows once");
   assert.match(html, /td img,th img\{max-width:100%/, "a picture in a table fits its column");
+  assert.match(html, /<div class="wipe"[\s\S]*?<span class="lab">Before<\/span><span class="lab r">After<\/span>[\s\S]*?<input type="range"[\s\S]*?<figcaption>Drag to compare\.<\/figcaption>/, "two before-and-after pictures in a paragraph are a compare slider");
   assert.match(html, /class="gallery screen-only"/, "the before and after gallery");
   assert.match(html, /class="flow"/, "the flow diagram");
-  assert.match(html, /<li><a href="#troubleshooting">Troubleshooting<\/a><ol><li><a href="#sign-in">Sign-in<\/a><\/li><li><a href="#prices">Prices<\/a><\/li><\/ol>/, "a chapter's h3s are its sub-entries in the contents");
+  assert.match(html, /<li><a href="#troubleshooting">Troubleshooting<\/a><ul><li><a href="#sign-in">Sign-in<\/a><\/li><li><a href="#prices">Prices<\/a><\/li><\/ul>/, "a chapter's h3s are its sub-entries in the contents");
   assert.ok(!html.includes("plugin-site handbook"), "no build command for readers");
   assert.match(html, /class="claim claim-live">Verified live/);
   assert.match(html, /<a href="#install">Install<\/a> to start/, "a chapter id is a link target");
@@ -49,7 +51,7 @@ test("the handbook builds from the plug-in's docs with every link and picture re
   const single = fs.readFileSync(path.join(out, `scenario-sample-handbook-${r.version}.html`), "utf8");
   assert.ok(!/<img src="(?!data:)/.test(single), "the single file embeds its pictures");
   assert.ok(!/href="(?!#|https:|mailto:)/.test(single), "and links nothing relative");
-  assert.match(html, /<a class="button" href="\/download\/latest">Download<\/a>/, "a site-absolute link stays in the web page");
+  assert.match(html, /<a class="btn-go" href="\/download\/latest">Download<\/a>/, "a site-absolute link stays in the web page");
   assert.match(single, /href="https:\/\/sample\.scenario\.com\/download\/latest"/, "and opens on the site from the single file");
   assert.match(html, /<meta property="og:image" content="https:\/\/sample\.scenario\.com\/media\/[^"]+">/, "the link preview's picture has an absolute address");
   assert.match(html, /<meta property="og:url" content="https:\/\/sample\.scenario\.com\/">/);

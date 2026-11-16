@@ -19,7 +19,8 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const md = require("./markdown.js");
 const { CSS } = require("./style.js");
-const { SCRIPT } = require("./script.js");
+const ui = require("../components-lib/components.js");
+const { CLIENT } = require("../components-lib/client.js");
 const EM_DASH = new RegExp(String.fromCharCode(0x2014));
 
 const { loadConfig } = require("./config.js");
@@ -301,6 +302,11 @@ class Renderer {
     const cap = caption ? `<p class="fig-note">${this.inline(caption, b.file)}</p>` : "";
     // An italic paragraph alone, under a table, reads as its caption.
     if (!imgs.length) return cap;
+    // Two before-and-after pictures in one paragraph: drag to compare.
+    if (imgs.length === 2 && imgs.every((im) => kind(im) === "ba") && this.ctx.mode === "web") {
+      const side = (im, fallback) => ({ src: im.src, alt: im.alt, label: im.alt.includes(":") ? im.alt.split(":")[0] : fallback, w: im.size && im.size.w, h: im.size && im.size.h });
+      return ui.wipe(side(imgs[0], "Before"), side(imgs[1], "After"), caption ? this.inline(caption, b.file) : "");
+    }
     const label = (k) => (k === "ba" ? "Before and after" : k === "clip" ? "Recording" : "");
     const text = (im) => `${label(kind(im)) ? `<span class="fig-label">${label(kind(im))}</span> ` : ""}${esc(im.alt)}`;
     // Screenshots, and several pictures side by side, as one row with one caption.
@@ -418,20 +424,19 @@ function siteHref(href, mode) {
 // ---------------------------------------------------------------- generated parts
 
 // The optional "how it works" diagram under the hero: what goes in, the
-// Scenario models, what comes back (handbook.config.json "flow").
-function heroDiagram() {
+// Scenario models (with the price button), what comes back
+// (handbook.config.json "flow").
+function heroDiagram(r) {
   const flow = CONFIG.flow;
   if (!flow) return "";
-  const r = new Renderer({ anchors: {}, fileHome: {}, assets: new Map(), problems: [], mode: "web" });
-  const items = (list) => list.map(([t, href]) => `<li>${href ? `<a href="${esc(href)}">${esc(t)}</a>` : esc(t)}</li>`).join("");
-  const col = (cls, c) => `<div class="flow-col ${cls}"><p class="flow-label">${esc(c.label)}</p><ul>${items(c.items)}</ul></div>`;
-  const mid = flow.models;
-  return `<div class="flow" role="group" aria-label="How ${esc(CONFIG.product)} works">
-${col("flow-in", flow.from)}
-<div class="flow-col flow-mid"><p class="flow-label">${esc(mid.label)}</p><ul class="flow-actions">${items(mid.items)}</ul>${mid.note ? `<p class="flow-price">${r.inline(mid.note, CONFIG.intro.file)}</p>` : ""}</div>
-${col("flow-out", flow.to)}
-${flow.note ? `<p class="flow-agents">${r.inline(flow.note, CONFIG.intro.file)}</p>` : ""}
-</div>`;
+  const m = flow.models;
+  return ui.flow({
+    label: `How ${CONFIG.product} works`,
+    from: flow.from,
+    actions: { label: m.label, items: m.items, more: m.more, button: m.button, note: m.note && md.plain(m.note) },
+    to: flow.to,
+    foot: flow.note ? [["", r.inline(flow.note, CONFIG.intro.file)]] : []
+  });
 }
 
 function gallery(chapters, r) {
@@ -527,6 +532,9 @@ function page(meta, chapters, docs, mode, extra = {}) {
       if (ch.generated === "licence") html += licenceExtra(meta);
       if (CONFIG.gallery && ch.id === (CONFIG.gallery.show || CONFIG.gallery.chapter)) html += gallery(chapters, r);
       const subs = ch.blocks.filter((b) => b.type === "heading" && b.level === 3);
+      const cfg = CHAPTERS.find((c) => c.id === ch.id) || {};
+      if (cfg.part) toc.push({ group: cfg.part[0] });
+      else if (cfg.group) toc.push({ group: cfg.group });
       toc.push({ id: ch.id, title: ch.title, subs: subs.map((s) => ({ id: s.id, title: md.plain(s.text) })) });
       // Search entries: the chapter, then each of its h3 sections.
       const segs = [];
@@ -539,20 +547,16 @@ function page(meta, chapters, docs, mode, extra = {}) {
       }
       segs.push(cur);
       for (const s of segs) index.push({ id: s.id, t: s.title, c: s.id === ch.id ? "" : ch.title, x: blockText(s.blocks).slice(0, 1600) });
-      const num = String(n + 1).padStart(2, "0");
-      return `<section class="chapter${ch.newPage ? " new-page" : ""}" aria-labelledby="${ch.id}">
-<h2 id="${ch.id}"><span class="num" aria-hidden="true">${num}</span><span class="title">${esc(ch.title)}</span><a class="anchor" href="#${ch.id}" aria-label="Link to this section">#</a></h2>
+      return `${cfg.part ? ui.part(cfg.part[0], cfg.part[1]) : ""}<section id="${ch.id}"${ch.newPage ? ' class="new-page"' : ""}>
+<h2><span class="ch-num" aria-hidden="true">${String(n + 1).padStart(2, "0")} </span>${esc(ch.title)}<a class="anchor" href="#${ch.id}" aria-label="Link to this section">#</a></h2>
 ${html}
 </section>`;
     })
     .join("\n");
 
-  const tocHtml = `<ol class="toc-list">${toc
-    .map((t) => `<li><a href="#${t.id}">${esc(t.title)}</a>${t.subs.length ? `<ol>${t.subs.map((s) => `<li><a href="#${s.id}">${esc(s.title)}</a></li>`).join("")}</ol>` : ""}</li>`)
-    .join("")}</ol>`;
-
+  const chaptersToc = toc.filter((t) => !t.group);
   const pages = extra.pages || {};
-  const printToc = `<nav class="print-toc print-only" aria-label="Contents"><h2 class="print-toc-title">Contents</h2><ol>${toc
+  const printToc = `<nav class="print-toc print-only" aria-label="Contents"><h2 class="print-toc-title">Contents</h2><ol>${chaptersToc
     .map((t, n) => `<li><a href="#${t.id}"><span class="pt-num">${String(n + 1).padStart(2, "0")}</span><span class="pt-title">${esc(t.title)}</span><span class="pt-dots"></span><span class="pt-page">${pages[t.id] || "00"}</span></a></li>`)
     .join("")}</ol></nav>`;
 
@@ -563,75 +567,64 @@ ${heroImg ? `<img class="cover-img" src="${esc(heroImg.src)}" alt="">` : ""}
 <dl class="cover-meta"><div><dt>Version</dt><dd>${meta.version}</dd></div><div><dt>Date</dt><dd>${meta.date}</dd></div>${CONFIG.cover.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl>
 </section>`;
 
-  const notes = `<div class="notes">
-${notice ? `<aside class="callout">${r.blocks(notice.children.map((c) => tagFile(c, introFile)))}</aside>` : ""}
-${guideIntro ? `<p>${r.inline(guideIntro.text, CONFIG.intro.guide)}</p>` : ""}
-${CONFIG.notes.map((n) => `<p>${r.inline(n, introFile)}</p>`).join("\n")}
-</div>`;
+  // The version note under the hero: the README's block quote, the guide's
+  // intro and the configured notes.
+  const noteHtml = [
+    notice ? r.blocks(notice.children.map((c) => tagFile(c, introFile))) : "",
+    guideIntro ? `<p>${r.inline(guideIntro.text, CONFIG.intro.guide)}</p>` : "",
+    ...CONFIG.notes.map((n) => `<p>${r.inline(n, introFile)}</p>`)
+  ].join("");
+  const film = CONFIG.film && mode === "web" ? CONFIG.film : null;
+  const media = film
+    ? ui.film({ src: r.resolve(introFile, film.src, "img"), poster: film.poster ? r.resolve(introFile, film.poster, "img") : "", tag: film.tag || "Film", caption: film.caption })
+    : heroImg
+      ? `<figure class="fig fig-hero">${zoomable(heroImg, true)}<figcaption>${esc(heroImg.alt)}</figcaption></figure>`
+      : "";
+  const intro = `${ui.hero({
+    eyebrow: `${CONFIG.product} · Handbook`,
+    heading: CONFIG.product,
+    accent: CONFIG.accent,
+    ledeHtml: lede ? r.inline(lede.text, introFile) : "",
+    buttons: CONFIG.cta.map(([t, href]) => [t, siteHref(href, mode)]),
+    mediaHtml: media,
+    noteHtml: noteHtml ? ui.note(`Version ${meta.version}`, noteHtml) : ""
+  })}
+${heroDiagram(r)}`;
 
-  const intro = `<header class="hero" id="top">
-<p class="eyebrow">Handbook <span class="dot" aria-hidden="true"></span> ${meta.version}</p>
-<h1>${product}</h1>
-${lede ? `<p class="lede">${r.inline(lede.text, introFile)}</p>` : ""}
-<p class="hero-cta">${CONFIG.cta.map(([t, href], k) => `<a class="button${k ? " quiet" : ""}" href="${esc(siteHref(href, mode))}">${esc(t)}</a>`).join(" ")}</p>
-${heroImg ? `<figure class="fig fig-hero">${zoomable(heroImg, true)}<figcaption>${esc(heroImg.alt)}</figcaption></figure>` : ""}
-${heroDiagram()}
-${notes}
-</header>`;
-
-  const fonts = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">`;
   const searchJson = JSON.stringify(index).replace(/</g, "\\u003c");
+  const links = [...CONFIG.nav.map(([t, href], k) => [t, siteHref(href, mode), k > 0]), ["GitHub", REPO_URL, true]];
+  const legal = `${product} ${meta.version}${meta.commit ? `, commit <code>${meta.commit}</code>` : ""}, ${meta.date}. <a href="mailto:support@scenario.com">support@scenario.com</a>${CONFIG.trademarks ? `<br>${esc(CONFIG.trademarks)}` : ""}`;
 
   const html = `<!doctype html>
-<html lang="en"${mode === "print" ? ' class="for-print" data-theme="light"' : ""}>
+<html lang="en"${mode === "print" ? ' class="for-print"' : ""}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${product} Handbook</title>
 <meta name="description" content="${esc(CONFIG.description.replace(/\{version\}/g, meta.version))}">
 ${mode === "web" ? socialMeta(heroImg, meta) : ""}
-<meta name="color-scheme" content="light dark">
+<meta name="color-scheme" content="light">
 ${CONFIG.analytics && mode === "web" ? `<script>window.va=window.va||function(){(window.vaq=window.vaq||[]).push(arguments);};</script><script defer src="${esc(CONFIG.analytics)}"></script>` : ""}
-${fonts}
-<style>${CSS}${themeCss()}</style>
+${ui.FONTS}
+<style>${ui.LOOK}${CSS}${ui.theme(CONFIG.theme)}${printFooter()}</style>
 </head>
 <body>
 <a class="skip" href="#guide">Skip to the handbook</a>
+${ui.logoSymbol()}
 ${cover}
 ${printToc}
-<header class="topbar">
-<div class="bar">
-<a class="brand" href="#top" aria-label="${product}, top of the handbook">${logo}<span class="product">${esc(CONFIG.brand)}</span></a>
-<span class="version" title="Version">${meta.version}</span>
-<div class="search" role="search">
-<label class="visually-hidden" for="q">Search the handbook</label>
-<input id="q" type="search" placeholder="Search" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-controls="q-results" aria-autocomplete="list">
-<kbd class="search-key" aria-hidden="true">/</kbd>
-<div class="search-panel" id="q-panel" hidden><ul id="q-results" role="listbox" aria-label="Matching sections"></ul><p class="search-status" id="q-status" aria-live="polite"></p></div>
-</div>
-<nav class="nav" aria-label="Site">
-${CONFIG.nav.map(([t, href]) => `<a class="opt" href="${esc(siteHref(href, mode))}">${esc(t)}</a>`).join("\n")}
-<a class="opt" href="${REPO_URL}" rel="noopener">GitHub</a>
-<a class="button small" href="${APP_URL}" rel="noopener">App Login</a>
-<button type="button" class="theme" id="theme" aria-label="Switch between light and dark" title="Light or dark"><span aria-hidden="true"></span></button>
-</nav>
-</div>
-</header>
-<div class="layout">
-<nav class="side" aria-label="Contents">
-<details class="side-box" id="side-box" open><summary>Contents</summary>${tocHtml}</details>
-</nav>
+${ui.header({ product: CONFIG.product, chip: CONFIG.chip, version: meta.version, links, appUrl: APP_URL })}
+<div class="page">
+${ui.toc([{ id: "top", title: "Overview", subs: [] }, ...toc])}
 <main id="guide" tabindex="-1">
 ${intro}
-<article class="handbook">
 ${body}
-</article>
-<footer class="foot"><p>${product} ${meta.version}${meta.commit ? `, built from commit <code>${meta.commit}</code>` : ""}, ${meta.date}. <a href="${REPO_URL}" rel="noopener">GitHub</a>, <a href="${APP_URL}" rel="noopener">app.scenario.com</a>, <a href="mailto:support@scenario.com">support@scenario.com</a>.</p>${CONFIG.trademarks ? `<p>${esc(CONFIG.trademarks)}</p>` : ""}</footer>
 </main>
 </div>
+${ui.footer([["Source on GitHub", REPO_URL], ["Changelog", "#changelog"], ["Scenario docs", "https://docs.scenario.com"], ["scenario.com", "https://www.scenario.com"]], legal)}
 <dialog class="lightbox" id="lightbox" aria-label="Enlarged picture"><form method="dialog"><button class="lb-close" aria-label="Close">Close</button></form><img alt=""><p class="lb-cap"></p></dialog>
 <script type="application/json" id="search-index">${searchJson}</script>
-<script>${SCRIPT}</script>
+<script>${CLIENT}</script>
 </body>
 </html>
 `;
@@ -733,13 +726,9 @@ function chapterPages(pdfFile, chapters) {
 
 // ---------------------------------------------------------------- main
 
-// The plug-in's accent colour (handbook.config.json "theme.accent"), light and dark.
-function themeCss() {
-  // The PDF's page footer names the product.
-  const print = `@media print{@page{@bottom-left{content:${JSON.stringify(`${CONFIG.product} handbook`)};font:8pt "IBM Plex Mono",monospace;color:#777}}}`;
-  const t = CONFIG.theme;
-  if (!t || !t.accent) return print;
-  return `${print}:root{--accent:${t.accent}}@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--accent:${t.accentDark || t.accent}}}:root[data-theme="dark"]{--accent:${t.accentDark || t.accent}}`;
+// The PDF's page footer names the product.
+function printFooter() {
+  return `@media print{@page{@bottom-left{content:${JSON.stringify(`${CONFIG.product} handbook`)};font:8pt "JetBrains Mono",monospace;color:#777}}}`;
 }
 
 // Reads the plug-in's version where its release tooling keeps it.

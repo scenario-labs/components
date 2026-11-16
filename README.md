@@ -4,8 +4,10 @@ The site tooling the Scenario plug-ins share. Each plug-in keeps its docs and a
 `handbook.config.json`; this repository turns them into its handbook and
 publishes its site.
 
-- **The handbook builder**: a plug-in's Markdown docs become one page with a
-  contents column, search, a light and a dark theme and enlargeable pictures;
+- **components-lib**: the Scenario plug-in sites' look and components, taken
+  from photoshop.scenario.com (below).
+- **The handbook builder**: a plug-in's Markdown docs become one page in that
+  look, with a contents rail, search and enlargeable pictures;
   a single HTML file that works offline; and an A4 PDF. It checks every link
   and picture, and refuses em dashes, machine paths and any address but
   support@scenario.com.
@@ -103,7 +105,9 @@ quick start, find your way around, one chapter per feature, costs, jobs,
 files and folders, what leaves the machine, troubleshooting, known limits,
 changelog, licence. Architecture, tests, diagrams of the code and the design
 spec stay in the repository for contributors. A chapter's `###` headings are
-its entries in the contents column, shown while it is read.
+its entries in the contents rail, all shown. A chapter's `"group"` puts a
+label above it in the rail ("Eight steps"), and `"part"` (`[label, line]`)
+opens a part of the page with a divider and a label in the rail ("Reference").
 
 A chapter is `{"id", "title", "parts"}`, with `"newPage": true` to start it on
 a new page in the PDF. Each part takes from one doc:
@@ -130,10 +134,13 @@ Optional, with their defaults:
 | `fileNames` | README, Changelog, LICENSE | The names shown for links whose text is a bare file name |
 | `figures` | `{"beforeAfter": "before-after/", "screens": "screens/"}` | Path parts that mark before-and-after pictures and screenshots |
 | `gallery` | none | `{"chapter", "show", "eyebrow"}`: a grid of the before-and-after pictures of `chapter`, shown in `show` |
-| `flow` | none | A "how it works" diagram under the hero: `{"from", "models", "to", "note"}`, each column `{"label", "items": [[text, href]]}` |
+| `flow` | none | The "how it works" diagram under the hero: `{"from", "models", "to", "note"}`, each column `{"label", "items": [[text, href]]}`; `models` also takes `"button"` (the price button, such as `Generate . 120 CU`), `"more"` and `"note"` |
 | `checks` | `{"prefixed": []}` | Terms that must carry a prefix, such as `[["MCP", "Scenario"]]` |
 | `trademarks` | `""` | The trademark line in the footer |
-| `theme` | none | `{"accent", "accentDark"}`: the plug-in's colour |
+| `theme` | none | The plug-in's colour: `{"chip", "chipInk", "chipSoft", "chipLine"}` for its name chip and the diagram's inputs (an older `accent` counts as `chip`) |
+| `chip` | the brand without "for" | The name chip in the top bar, such as `Maya` |
+| `accent` | `user guide` | The italic end of the hero title: "Scenario for Maya: *user guide*" |
+| `film` | none | A film in the hero instead of the hero picture: `{"src", "poster", "tag", "caption"}`, paths from the intro doc; web page only |
 | `site` | `""` | The site's address, such as `https://maya.scenario.com`: needed for site-absolute links (`/download/latest`) in `cta` and `nav`, which the single file and the PDF open there, and for the link preview (Open Graph and X tags, with the hero picture), whose addresses must be absolute |
 | `analytics` | `""` | A site-absolute script the web page loads, such as `/page.js`, where the plug-in's Vercel proxy serves Web Analytics; not in the single file or the PDF |
 
@@ -143,6 +150,28 @@ add: `<p align>` and `<div>` wrappers, `<a href>`, `<img width>` and `<sub>`
 captions. Code blocks show as code.
 [test/fixtures/sample-plugin](test/fixtures/sample-plugin) is a complete
 example.
+
+## components-lib
+
+`src/components-lib/` holds the look and the components every Scenario
+plug-in site shares, with the markup photoshop.scenario.com uses, so a new
+site starts from them:
+
+- `look.css`: light only, warm paper, terracotta, Instrument Serif headings,
+  Instrument Sans text, JetBrains Mono eyebrows, a 760 px reading column; the
+  plug-in's own colour in the `--chip` tokens.
+- `components.js`: `header` (wordmark, name chip, version, search, links,
+  App Login), `toc` (every entry open, group labels), `hero` (eyebrow, serif
+  title with its italic end, lede, buttons, picture or `film`, `note`), `flow`
+  (what goes in, the actions with the price button, what comes back), `wipe`
+  (drag to compare two pictures), `steps` (step cards), `part`, `section`,
+  `footer`, and `theme` and `FONTS` for the page head. Each returns HTML.
+- `client.js`: their behaviour: the contents rail, search, the compare
+  slider, the film, pictures that enlarge.
+
+The handbook builder uses them. In the docs, two before-and-after pictures in
+one paragraph (paths with `before-after/`) become a compare slider; the text
+before a colon in each picture's alt is its label.
 
 ## Versions
 
