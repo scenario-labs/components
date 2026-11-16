@@ -51,6 +51,10 @@ test("the handbook builds from the plug-in's docs with every link and picture re
   assert.ok(!/href="(?!#|https:|mailto:)/.test(single), "and links nothing relative");
   assert.match(html, /<a class="button" href="\/download\/latest">Download<\/a>/, "a site-absolute link stays in the web page");
   assert.match(single, /href="https:\/\/sample\.scenario\.com\/download\/latest"/, "and opens on the site from the single file");
+  assert.match(html, /<meta property="og:image" content="https:\/\/sample\.scenario\.com\/media\/[^"]+">/, "the link preview's picture has an absolute address");
+  assert.match(html, /<meta property="og:url" content="https:\/\/sample\.scenario\.com\/">/);
+  assert.match(html, /<meta name="twitter:card" content="summary_large_image">/);
+  assert.ok(!single.includes("og:image"), "the single file has no link preview");
   assert.match(html, /<script defer src="\/page\.js"><\/script>/, "the web page loads the site's analytics");
   assert.ok(!single.includes("/page.js"), "the single file does not");
 });

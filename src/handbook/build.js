@@ -477,6 +477,27 @@ function licenceExtra(meta) {
 
 // ---------------------------------------------------------------- page
 
+// The link preview (Open Graph, X): absolute addresses, as link unfurlers ignore
+// relative ones. The handbook's address is the site's, plus HANDBOOK_PATH when
+// the action builds it into a folder.
+function socialMeta(heroImg, meta) {
+  const folder = (process.env.HANDBOOK_PATH || "").replace(/^\/+|\/+$/g, "");
+  const base = CONFIG.site ? `${CONFIG.site.replace(/\/+$/, "")}/${folder ? `${folder}/` : ""}` : "";
+  const tags = [
+    ["property", "og:type", "website"],
+    ["property", "og:site_name", "Scenario"],
+    ["property", "og:title", `${CONFIG.product} Handbook`],
+    ["property", "og:description", CONFIG.description.replace(/\{version\}/g, meta.version)],
+  ];
+  if (base) tags.push(["property", "og:url", base]);
+  if (heroImg) {
+    tags.push(["property", "og:image", base + heroImg.src], ["property", "og:image:alt", heroImg.alt]);
+    tags.push(["name", "twitter:card", "summary_large_image"]);
+  }
+  return tags.map(([attr, key, value]) => `<meta ${attr}="${key}" content="${esc(value)}">`).join("");
+}
+
+
 function page(meta, chapters, docs, mode, extra = {}) {
   const ctx = { anchors: meta.anchors, fileHome: meta.fileHome, assets: meta.assets, problems: meta.problems, mode };
   const r = new Renderer(ctx);
@@ -566,7 +587,7 @@ ${notes}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${product} Handbook</title>
 <meta name="description" content="${esc(CONFIG.description.replace(/\{version\}/g, meta.version))}">
-${heroImg && mode === "web" ? `<meta property="og:title" content="${product}"><meta property="og:image" content="${esc(heroImg.src)}">` : ""}
+${mode === "web" ? socialMeta(heroImg, meta) : ""}
 <meta name="color-scheme" content="light dark">
 ${CONFIG.analytics && mode === "web" ? `<script>window.va=window.va||function(){(window.vaq=window.vaq||[]).push(arguments);};</script><script defer src="${esc(CONFIG.analytics)}"></script>` : ""}
 ${fonts}

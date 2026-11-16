@@ -134,7 +134,7 @@ Optional, with their defaults:
 | `checks` | `{"prefixed": []}` | Terms that must carry a prefix, such as `[["MCP", "Scenario"]]` |
 | `trademarks` | `""` | The trademark line in the footer |
 | `theme` | none | `{"accent", "accentDark"}`: the plug-in's colour |
-| `site` | `""` | The site's address, such as `https://maya.scenario.com`: needed for site-absolute links (`/download/latest`) in `cta` and `nav`, which the single file and the PDF open there |
+| `site` | `""` | The site's address, such as `https://maya.scenario.com`: needed for site-absolute links (`/download/latest`) in `cta` and `nav`, which the single file and the PDF open there, and for the link preview (Open Graph and X tags, with the hero picture), whose addresses must be absolute |
 | `analytics` | `""` | A site-absolute script the web page loads, such as `/page.js`, where the plug-in's Vercel proxy serves Web Analytics; not in the single file or the PDF |
 
 Docs may use the Markdown subset the plug-ins write (headings, lists, tables,
