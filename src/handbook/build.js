@@ -20,7 +20,6 @@ const { spawnSync } = require("node:child_process");
 const md = require("./markdown.js");
 const { CSS } = require("./style.js");
 const ui = require("../components-lib/components.js");
-const { CLIENT } = require("../components-lib/client.js");
 const EM_DASH = new RegExp(String.fromCharCode(0x2014));
 
 const { loadConfig } = require("./config.js");
@@ -624,7 +623,7 @@ ${body}
 ${ui.footer([["Source on GitHub", REPO_URL], ["Changelog", "#changelog"], ["Scenario docs", "https://docs.scenario.com"], ["scenario.com", "https://www.scenario.com"]], legal)}
 <dialog class="lightbox" id="lightbox" aria-label="Enlarged picture"><form method="dialog"><button class="lb-close" aria-label="Close">Close</button></form><img alt=""><p class="lb-cap"></p></dialog>
 <script type="application/json" id="search-index">${searchJson}</script>
-<script>${CLIENT}</script>
+<script>${ui.CLIENT}</script>
 </body>
 </html>
 `;

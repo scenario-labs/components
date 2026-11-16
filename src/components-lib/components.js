@@ -1,8 +1,9 @@
 "use strict";
 // components-lib: the pieces of a Scenario plug-in site, with the markup
 // photoshop.scenario.com uses, as functions that return HTML strings. The
-// look is look.css, the behaviour client.js. Text arguments are plain text and
-// are escaped here; arguments named html are trusted, already escaped HTML.
+// look is look.css, the behaviour client.js (a browser script, CLIENT). Text
+// arguments are plain text and are escaped here; arguments named html are
+// trusted, already escaped HTML.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -12,6 +13,8 @@ function esc(s) {
 }
 
 const LOOK = fs.readFileSync(path.join(__dirname, "look.css"), "utf8");
+// client.js, inlined into a page so it works offline (a single-file handbook).
+const CLIENT = fs.readFileSync(path.join(__dirname, "client.js"), "utf8");
 const FONTS =
   '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' +
   '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap">';
@@ -165,4 +168,4 @@ function footer(links, legalHtml) {
   return `<footer class="site-footer"><div class="bar">${wordmark()}${links.map(([t, href]) => `<a href="${esc(href)}">${esc(t)}</a>`).join("")}${legalHtml ? `<span class="legal">${legalHtml}</span>` : ""}</div></footer>`;
 }
 
-module.exports = { esc, LOOK, FONTS, theme, logoSymbol, wordmark, header, toc, title, cta, film, note, hero, flow, wipe, steps, part, section, footer };
+module.exports = { esc, LOOK, CLIENT, FONTS, theme, logoSymbol, wordmark, header, toc, title, cta, film, note, hero, flow, wipe, steps, part, section, footer };

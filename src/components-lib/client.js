@@ -1,10 +1,9 @@
-"use strict";
 // components-lib behaviour, as photoshop.scenario.com behaves: the contents
 // rail (open beside the page, a closed card on narrow screens, the section in
 // view marked), search ("/" focuses it), drag to compare, the film, and
-// pictures that enlarge. The page reads fine without it.
-
-const CLIENT = String.raw`
+// pictures that enlarge. A plain browser script: a page loads it with
+// <script src>, or the builder inlines it (components.js, CLIENT). The page
+// reads fine without it.
 (function(){
   // Contents rail
   var toc=document.getElementById("toc");
@@ -112,6 +111,3 @@ const CLIENT = String.raw`
     });
   }
 })();
-`;
-
-module.exports = { CLIENT };
