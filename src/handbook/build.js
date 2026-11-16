@@ -42,6 +42,7 @@ function parseArgs(argv) {
   const opts = { config: "handbook.config.json", out: "", pdf: true, quiet: false };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--no-pdf") opts.pdf = false;
+    if (argv[i] === "--no-og") opts.og = false;
     else if (argv[i] === "--quiet") opts.quiet = true;
     else if (argv[i] === "--out") opts.out = path.resolve(argv[++i]);
     else if (argv[i] === "--config") opts.config = argv[++i];
@@ -423,6 +424,13 @@ function siteHref(href, mode) {
   return mode === "web" ? href : `${CONFIG.site.replace(/\/+$/, "")}${href}`;
 }
 
+// The hero picture: the README intro's picture named hero.*, as [alt, src].
+function heroOf(docs) {
+  const block = docs[CONFIG.intro.file].intro.find((b) => b.type === "para" && /^!\[[^\]]*\]\([^)]*hero\.[a-z]+\)$/.test(b.text.trim()));
+  const m = block ? /^!\[([^\]]*)\]\(([^)]+)\)$/.exec(block.text.trim()) : null;
+  return m ? { alt: m[1], src: m[2] } : null;
+}
+
 // ---------------------------------------------------------------- generated parts
 
 // The optional "how it works" diagram under the hero: what goes in, the
@@ -497,10 +505,13 @@ function socialMeta(heroImg, meta) {
     ["property", "og:description", CONFIG.description.replace(/\{version\}/g, meta.version)],
   ];
   if (base) tags.push(["property", "og:url", base]);
-  // Without an absolute address there is no picture a preview can show.
-  const image = heroImg && (/^https?:/.test(heroImg.src) ? heroImg.src : base && base + heroImg.src);
+  // The rendered card when there is one, else the hero picture. Without an
+  // absolute address there is no picture a preview can show.
+  const pic = meta.og || heroImg;
+  const image = pic && (/^https?:/.test(pic.src) ? pic.src : base && base + pic.src);
   if (image) {
-    tags.push(["property", "og:image", image], ["property", "og:image:alt", heroImg.alt]);
+    tags.push(["property", "og:image", image], ["property", "og:image:alt", pic.alt]);
+    if (meta.og) tags.push(["property", "og:image:width", "1200"], ["property", "og:image:height", "630"]);
     tags.push(["name", "twitter:card", "summary_large_image"]);
   }
   return tags.map(([attr, key, value]) => `<meta ${attr}="${key}" content="${esc(value)}">`).join("");
@@ -516,12 +527,11 @@ function page(meta, chapters, docs, mode, extra = {}) {
   const readme = docs[introFile];
   const plainPara = (b) => b.type === "para" && !/^!\[|<img\b|^\[!\[/.test(b.text.trim()) && !/^\*\*[^*]+:\*\*/.test(b.text.trim());
   const lede = readme.intro.find(plainPara);
-  const heroBlock = readme.intro.find((b) => b.type === "para" && /^!\[[^\]]*\]\([^)]*hero\.[a-z]+\)$/.test(b.text.trim()));
   const notice = readme.intro.find((b) => b.type === "quote");
   const guide = CONFIG.intro.guide && docs[CONFIG.intro.guide];
   const guideIntro = guide ? guide.intro.find((b) => b.type === "para") : null;
-  const hero = heroBlock ? /^!\[([^\]]*)\]\(([^)]+)\)$/.exec(heroBlock.text.trim()) : null;
-  const heroImg = hero ? r.imgTag(introFile, hero[2], hero[1]) : null;
+  const hero = heroOf(docs);
+  const heroImg = hero ? r.imgTag(introFile, hero.src, hero.alt) : null;
   const logo = fs.readFileSync(path.join(__dirname, "scenario-logo.svg"), "utf8").replace(/<!--[\s\S]*?-->\s*/, "").replace("<svg ", '<svg role="img" aria-label="Scenario" ');
   const product = esc(CONFIG.product);
 
@@ -676,6 +686,27 @@ function findChrome() {
   return c.find((p) => fs.existsSync(p)) || null;
 }
 
+// The link-preview card: www.scenario.com's BrandFrame, rendered by
+// plugin-site og (src/og) to og.png, with the hero picture unless "og.picture"
+// names another. If it cannot be made, the preview keeps the hero picture.
+function renderOg(docs, out) {
+  const og = CONFIG.og || {};
+  const hero = heroOf(docs);
+  const picture = og.picture ? path.join(ROOT, og.picture) : hero ? path.join(ROOT, path.dirname(CONFIG.intro.file), hero.src) : null;
+  const title = og.title || CONFIG.product;
+  const args = ["og", "--title", title, "--out", path.join(out, "og.png")];
+  if (og.subtitle) args.push("--subtitle", og.subtitle);
+  if (picture && fs.existsSync(picture)) args.push("--image", picture);
+  if (og.textColor) args.push("--text-color", og.textColor);
+  if (og.theme !== undefined) args.push("--theme", String(og.theme));
+  const r = spawnSync(process.execPath, [path.join(__dirname, "..", "..", "bin", "plugin-site.js"), ...args], { encoding: "utf8", timeout: 120000 });
+  if (r.status !== 0) {
+    process.stderr.write(`plugin-site handbook: no link-preview card (${(r.stderr || "").trim()}); the preview uses the hero picture\n`);
+    return null;
+  }
+  return { src: "og.png", alt: og.subtitle ? `${title}: ${og.subtitle}` : title };
+}
+
 function printPdf(chrome, htmlFile, pdfFile, profile) {
   const r = spawnSync(
     chrome,
@@ -775,6 +806,7 @@ function build(opts) {
     htmlName: `${CONFIG.files}-handbook-${version}.html`
   };
   fs.mkdirSync(opts.out, { recursive: true });
+  meta.og = opts.og === false || CONFIG.og === false ? null : renderOg(docs, opts.out);
 
   const web = page(meta, chapters, docs, "web");
   for (const [rel, abs] of meta.assets) {

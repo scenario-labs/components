@@ -11,6 +11,8 @@ publishes its site.
   a single HTML file that works offline; and an A4 PDF. It checks every link
   and picture, and refuses em dashes, machine paths and any address but
   support@scenario.com.
+- **og**: link-preview cards in www.scenario.com's design, BrandFrame
+  rendered with satori and resvg (below).
 - **The site action**: builds the plug-in's site from its newest published
   release, so the site never describes what people cannot download yet, and
   serves the release package under `download/` once its checksum and build
@@ -140,6 +142,7 @@ Optional, with their defaults:
 | `theme` | none | The plug-in's colour: `{"chip", "chipInk", "chipSoft", "chipLine"}` for its name chip and the diagram's inputs (an older `accent` counts as `chip`) |
 | `chip` | the brand without "for" | The name chip in the top bar, such as `Maya` |
 | `accent` | `user guide` | The italic end of the hero title: "Scenario for Maya: *user guide*" |
+| `og` | `{}` | The link-preview card (below): `{"title", "subtitle", "picture", "textColor", "theme"}`; the product name and the hero picture by default; `false` for none |
 | `film` | none | A film in the hero instead of the hero picture: `{"src", "poster", "tag", "caption"}`, paths from the intro doc; web page only |
 | `site` | `""` | The site's address, such as `https://maya.scenario.com`: needed for site-absolute links (`/download/latest`) in `cta` and `nav`, which the single file and the PDF open there, and for the link preview (Open Graph and X tags, with the hero picture), whose addresses must be absolute |
 | `analytics` | `""` | A site-absolute script the web page loads, such as `/page.js`, where the plug-in's Vercel proxy serves Web Analytics; not in the single file or the PDF |
@@ -172,6 +175,25 @@ site starts from them:
 The handbook builder uses them. In the docs, two before-and-after pictures in
 one paragraph (paths with `before-after/`) become a compare slider; the text
 before a colon in each picture's alt is its label.
+
+## og
+
+`src/og/` makes the 1200 x 630 link-preview cards (Open Graph, X) in
+www.scenario.com's design: `brand-frame.js` and `truchet.js` are
+scenario-com-landing-page's `BrandFrame` and `lib/truchet` in plain
+JavaScript, rendered as `next/og` renders them, satori to SVG and resvg to
+PNG, with Instrument Sans and Serif bundled (`fonts/`, OFL). With a picture,
+the card follows the /campaign/blender card: the picture fills the frame,
+title and line in the frame's beige; without one, the Truchet pattern seeded
+by the title.
+
+```sh
+plugin-site og --title "Scenario for Maya" --subtitle "One line." --image docs/media/hero.png --out og.png
+```
+
+The handbook builder renders `og.png` with it and points `og:image` there.
+satori and resvg are plugin-site's only runtime dependencies; the action
+installs them from the lockfile.
 
 ## Versions
 

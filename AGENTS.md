@@ -14,9 +14,11 @@ only its docs and a small configuration:
   its site from its newest release and add the checked release package.
 
 Plug-ins pin a release of this repository (a tag or its commit SHA). Plain
-JavaScript on Node's built-in modules, no runtime dependency: a plug-in runs
-it with `npx github:scenario-labs/plugin-site#<ref>` or through the action.
-The builder was ported from photoshop-plugin's `tools/handbook`.
+JavaScript on Node's built-in modules, plus satori and resvg for the
+link-preview cards: a plug-in runs it with
+`npx github:scenario-labs/plugin-site#<ref>` or through the action. The
+builder was ported from photoshop-plugin's `tools/handbook`, the cards from
+scenario-com-landing-page's `BrandFrame`.
 
 ## Code map
 
@@ -35,6 +37,9 @@ The builder was ported from photoshop-plugin's `tools/handbook`.
 - `src/components-lib/`: the plug-in sites' look and components, taken from
   photoshop.scenario.com: `look.css`, `components.js` (HTML builders),
   `client.js` (behaviour). README.md, "components-lib".
+- `src/og/`: link-preview cards: `brand-frame.js` and `truchet.js`
+  (www.scenario.com's BrandFrame and Truchet pattern, ported), `index.js`
+  (fonts, logo, satori and resvg render, the `og` command), `fonts/` (OFL).
 - `action.yml`: release lookup, docs restored from the release's commit,
   handbook build, release package with its checksum and attestation.
 - `tools/lint.js`: repository checks (below).
@@ -79,8 +84,9 @@ numbers, Poppler's `pdftotext`; the tests build without it.
 - The handbook is for the people who use a plug-in. Nothing the builder adds
   to it speaks to contributors (build commands, code diagrams, tests); those
   stay in the plug-in's repository.
-- No runtime dependency: Node's built-in modules only, so `npx` needs no install.
-  Development dependencies (commitlint, Playwright) are pinned in `pnpm-lock.yaml`.
+- Runtime dependencies: satori and resvg only, for the link-preview cards
+  (`src/og/`); everything else uses Node's built-in modules. All
+  dependencies are pinned in `pnpm-lock.yaml`.
 - `.agents/skills/` holds skills shared by every Scenario repository
   (`skills-lock.json`); change them upstream. `.claude/skills/` links to them.
 - No em dashes, in code, docs, commit messages and PR titles.

@@ -23,6 +23,7 @@ const DEFAULTS = {
   chip: "",
   accent: "user guide",
   film: null,
+  og: {},
   site: "",
   analytics: ""
 };
@@ -60,6 +61,7 @@ function loadConfig(configPath = "handbook.config.json", cwd = process.cwd()) {
   if (raw.analytics && !/^\/[\w./-]+\.js$/.test(raw.analytics)) fail(file, '"analytics" must be a site-absolute script path such as /page.js');
   if (raw.site && !/^https:\/\/[\w.-]+$/.test(raw.site)) fail(file, '"site" must be an https:// address with no path');
   if (raw.film && !raw.film.src) fail(file, '"film" needs "src"');
+  if (raw.og != null && raw.og !== false && typeof raw.og !== "object") fail(file, '"og" must be false or {"title", "subtitle", "picture", "textColor", "theme"}');
   if (raw.theme && raw.theme.accentDark) process.stderr.write(`${file}: "theme.accentDark" is no longer used: the handbook is light only\n`);
   if (raw.gallery && !ids.has(raw.gallery.chapter)) fail(file, `"gallery.chapter" names no chapter: ${raw.gallery.chapter}`);
   if (raw.gallery && raw.gallery.show && !ids.has(raw.gallery.show)) fail(file, `"gallery.show" names no chapter: ${raw.gallery.show}`);
@@ -83,7 +85,7 @@ function loadConfig(configPath = "handbook.config.json", cwd = process.cwd()) {
 // file, every doc it reads and the pictures folder. The action restores them
 // from a release's commit so the site describes what people can download.
 function docPaths(config, configFile) {
-  const docs = [config.intro.file, config.intro.guide, ...config.chapters.flatMap((c) => (c.parts || []).map((p) => p.file))].filter(Boolean);
+  const docs = [config.intro.file, config.intro.guide, config.og && config.og.picture, ...config.chapters.flatMap((c) => (c.parts || []).map((p) => p.file))].filter(Boolean);
   return [...new Set([configFile, config.version.file, ...docs, config.media.replace(/\/$/, "")])];
 }
 
