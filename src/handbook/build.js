@@ -490,8 +490,10 @@ function socialMeta(heroImg, meta) {
     ["property", "og:description", CONFIG.description.replace(/\{version\}/g, meta.version)],
   ];
   if (base) tags.push(["property", "og:url", base]);
-  if (heroImg) {
-    tags.push(["property", "og:image", base + heroImg.src], ["property", "og:image:alt", heroImg.alt]);
+  // Without an absolute address there is no picture a preview can show.
+  const image = heroImg && (/^https?:/.test(heroImg.src) ? heroImg.src : base && base + heroImg.src);
+  if (image) {
+    tags.push(["property", "og:image", image], ["property", "og:image:alt", heroImg.alt]);
     tags.push(["name", "twitter:card", "summary_large_image"]);
   }
   return tags.map(([attr, key, value]) => `<meta ${attr}="${key}" content="${esc(value)}">`).join("");
