@@ -302,7 +302,10 @@ class Renderer {
     // An italic paragraph alone, under a table, reads as its caption.
     if (!imgs.length) return cap;
     // Two before-and-after pictures in one paragraph: drag to compare.
-    if (imgs.length === 2 && imgs.every((im) => kind(im) === "ba") && this.ctx.mode === "web") {
+    // The slider shows the second picture in the first one's frame, so both
+    // must have the same shape; otherwise they stay a row of pictures.
+    const sameShape = (a, b) => a.size && b.size && Math.abs(a.size.w / a.size.h - b.size.w / b.size.h) < 0.02;
+    if (imgs.length === 2 && imgs.every((im) => kind(im) === "ba") && sameShape(imgs[0], imgs[1]) && this.ctx.mode === "web") {
       const side = (im, fallback) => ({ src: im.src, alt: im.alt, label: im.alt.includes(":") ? im.alt.split(":")[0] : fallback, w: im.size && im.size.w, h: im.size && im.size.h });
       return ui.wipe(side(imgs[0], "Before"), side(imgs[1], "After"), caption ? this.inline(caption, b.file) : "");
     }

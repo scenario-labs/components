@@ -157,7 +157,7 @@ figcaption { font-size: .84rem; color: var(--muted); margin-top: .6rem; line-hei
 /* ---------- how it works: the diagram ---------- */
 .flow { margin: 1.6rem 0 1.4rem; padding: 1.2rem; border: 1px solid var(--border); border-radius: 6px; background-color: var(--card); background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px); background-size: 32px 32px; display: grid; grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1.2fr) 24px minmax(0, 1fr); align-items: center; gap: 0 .35rem; }
 .flow > * { min-width: 0; }
-.flow h4 { font: 500 .6rem/1.3 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); margin: 0 0 .55rem; }
+.flow .fh { font: 500 .6rem/1.3 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); margin: 0 0 .55rem; }
 .flow ul { list-style: none; margin: 0; padding: 0; display: grid; gap: .35rem; }
 .flow li { background: #fff; border: 1px solid var(--line); border-left: 3px solid var(--chip); border-radius: 3px; padding: .42rem .6rem; font-size: .82rem; line-height: 1.3; color: var(--fg); }
 .flow .out li { border-left-color: var(--done); }
@@ -241,6 +241,8 @@ dl.terms dd { margin: 0; }
 .wipe .line { position: absolute; top: 0; bottom: 0; left: var(--cut, 50%); width: 2px; background: #fff; transform: translateX(-1px); box-shadow: 0 0 12px rgba(0,0,0,.35); pointer-events: none; }
 .wipe .knob { position: absolute; top: 50%; left: var(--cut, 50%); width: 40px; height: 40px; transform: translate(-50%, -50%); border-radius: 50%; background: var(--bg); display: grid; place-items: center; font: 600 .875rem var(--mono); color: var(--primary); pointer-events: none; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
 .wipe input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: ew-resize; margin: 0; }
+.wipe:has(input:focus-visible) .knob { outline: 2px solid var(--primary); outline-offset: 3px; }
+.wipe:has(input:focus-visible) { outline: 2px solid var(--primary); outline-offset: 2px; }
 
 /* notes: one label, one or two sentences */
 .note { border: 1px solid var(--border); border-left: 3px solid var(--primary-light); background: var(--card); padding: .75rem 1rem; border-radius: 0 var(--radius) var(--radius) 0; margin: 1.1rem 0 1.2rem; }

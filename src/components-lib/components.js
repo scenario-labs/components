@@ -116,11 +116,11 @@ function hero({ eyebrow, heading, accent, ledeHtml, buttons = [], mediaHtml = ""
 function flow({ label, from, actions, to, foot = [] }) {
   const items = (list) => list.map(([t, href]) => `<li>${href ? `<a href="${esc(href)}">${esc(t)}</a>` : esc(t)}</li>`).join("");
   return `<div class="flow" role="group" aria-label="${esc(label || "How it works")}">
-  <div><h4>${esc(from.label)}</h4><ul>${items(from.items)}</ul></div>
+  <div><p class="fh">${esc(from.label)}</p><ul>${items(from.items)}</ul></div>
   <div class="arr" aria-hidden="true"></div>
-  <div class="mid"><h4>${esc(actions.label)}</h4><div class="acts">${actions.items.map(([t, href]) => (href ? `<a href="${esc(href)}"><span>${esc(t)}</span></a>` : `<span>${esc(t)}</span>`)).join("")}</div>${actions.more ? `<p class="more">${esc(actions.more)}</p>` : ""}${actions.button ? `<div class="pbtn">${esc(actions.button)}</div>` : ""}${actions.note ? `<span class="pnote">${esc(actions.note)}</span>` : ""}</div>
+  <div class="mid"><p class="fh">${esc(actions.label)}</p><div class="acts">${actions.items.map(([t, href]) => (href ? `<a href="${esc(href)}"><span>${esc(t)}</span></a>` : `<span>${esc(t)}</span>`)).join("")}</div>${actions.more ? `<p class="more">${esc(actions.more)}</p>` : ""}${actions.button ? `<div class="pbtn">${esc(actions.button)}</div>` : ""}${actions.note ? `<span class="pnote">${esc(actions.note)}</span>` : ""}</div>
   <div class="arr" aria-hidden="true"></div>
-  <div class="out"><h4>${esc(to.label)}</h4><ul>${items(to.items)}</ul></div>
+  <div class="out"><p class="fh">${esc(to.label)}</p><ul>${items(to.items)}</ul></div>
   ${foot.length ? `<div class="foot">${foot.map(([b, html]) => `<span><b>${esc(b)}</b>${html}</span>`).join("")}</div>` : ""}
 </div>`;
 }

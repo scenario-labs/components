@@ -53,6 +53,7 @@ td img,th img{max-width:100%;height:auto}
 .ba-title{display:block;font-weight:600;font-size:.92rem;padding:.6rem .7rem .1rem}
 .ba-text{display:block;font-size:.78rem;line-height:1.35;color:var(--muted);padding:0 .7rem .7rem}
 .flow .acts a{text-decoration:none;display:contents}
+.flow .acts a:focus-visible span{outline:2px solid var(--primary);outline-offset:2px}
 .flow li a{color:var(--fg);text-decoration:none}
 
 /* Lightbox */
@@ -82,7 +83,7 @@ td img,th img{max-width:100%;height:auto}
   .page{display:block;padding:0;max-width:none}
   main{max-width:none}
   a{color:inherit;text-decoration-color:#bbb}
-  .cover{height:297mm;width:210mm;padding:22mm 20mm 18mm;display:flex!important;flex-direction:column;break-after:page;position:relative}
+  .cover{margin:0;height:297mm;width:210mm;padding:22mm 20mm 18mm;display:flex!important;flex-direction:column;break-after:page;position:relative}
   .cover-logo svg{width:44mm;height:auto;color:#111;display:block}
   .cover-main{margin-top:30mm}
   .cover-title{font:400 40pt/1 var(--serif);letter-spacing:-.02em;margin:0 0 6mm}
