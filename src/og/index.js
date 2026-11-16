@@ -12,7 +12,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
-const { BrandFrame, BRAND_FRAME_DEFAULTS, OG_WIDTH, OG_HEIGHT } = require("./brand-frame.js");
+const { BrandFrame, BRAND_FRAME_DEFAULTS, getTheme, OG_WIDTH, OG_HEIGHT } = require("./brand-frame.js");
 
 const FONT_DIR = path.join(__dirname, "fonts");
 const MIME = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg" };
@@ -52,9 +52,10 @@ async function render({ title, subtitle, image, textColor, themeIndex, domain })
   const satori = require("satori").default;
   const { Resvg } = require("@resvg/resvg-js");
   // Over a picture the text and logo take the frame's beige, as the
-  // /campaign/blender card does; on the pattern, the theme's own colours.
-  const text = textColor || (image ? BRAND_FRAME_DEFAULTS.bg : undefined);
-  const element = BrandFrame({ title, subtitle, imageUrl: image ? picture(image) : undefined, logoUrl: logo(text || BRAND_FRAME_DEFAULTS.text), textColor: text, themeIndex, domain });
+  // /campaign/blender card does; on the pattern, the chosen theme's colour.
+  // The logo and the text always share one colour.
+  const text = textColor || (image ? BRAND_FRAME_DEFAULTS.bg : getTheme(themeIndex).text);
+  const element = BrandFrame({ title, subtitle, imageUrl: image ? picture(image) : undefined, logoUrl: logo(text), textColor: text, themeIndex, domain });
   const svg = await satori(element, { width: OG_WIDTH, height: OG_HEIGHT, fonts: fonts() });
   return new Resvg(svg, { fitTo: { mode: "width", value: OG_WIDTH } }).render().asPng();
 }

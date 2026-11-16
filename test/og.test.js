@@ -36,3 +36,20 @@ test("the frame keeps www's layout: the domain top right, a long title smaller",
 test("a WebP picture is refused, as satori cannot read it", async () => {
   await assert.rejects(render({ title: "x", image: "picture.webp" }), /PNG or JPEG/);
 });
+
+test("the logo takes the text's colour, also with a chosen theme", async () => {
+  const { BRAND_FRAME_DEFAULTS, getTheme } = require("../src/og/brand-frame.js");
+  const seen = [];
+  const original = Buffer.from;
+  Buffer.from = function (value, ...rest) {
+    if (typeof value === "string" && value.startsWith("<svg")) seen.push(/fill="([^"]+)"/.exec(value)[1]);
+    return original.call(this, value, ...rest);
+  };
+  try {
+    await render({ title: "x", themeIndex: 15 });
+    await render({ title: "x", image: PICTURE });
+  } finally {
+    Buffer.from = original;
+  }
+  assert.deepEqual(seen, [getTheme(15).text, BRAND_FRAME_DEFAULTS.bg]);
+});

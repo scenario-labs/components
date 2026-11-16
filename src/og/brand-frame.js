@@ -74,4 +74,4 @@ function BrandFrame({ title, subtitle, imageUrl, logoUrl, bgColor, textColor, th
   );
 }
 
-module.exports = { BrandFrame, BRAND_FRAME_DEFAULTS, OG_WIDTH, OG_HEIGHT };
+module.exports = { BrandFrame, BRAND_FRAME_DEFAULTS, getTheme, OG_WIDTH, OG_HEIGHT };
