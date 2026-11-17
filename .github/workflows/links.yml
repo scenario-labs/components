@@ -24,7 +24,7 @@ concurrency:
 jobs:
   scan:
     name: links
-    if: github.repository == 'scenario-labs/plugin-site'
+    if: github.repository == 'scenario-labs/components'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:

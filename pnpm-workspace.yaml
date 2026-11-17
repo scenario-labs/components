@@ -1,0 +1,4 @@
+# esbuild checks its platform binary when installed (tsx and the
+# components-lib client depend on it); pnpm runs no other build script.
+allowBuilds:
+  esbuild: true

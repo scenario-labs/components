@@ -1,55 +1,57 @@
-"use strict";
 // The built handbook in a real browser (Playwright's Chromium): search, the
 // contents rail, the light look, the lightbox, and the PDF.
 // Needs `pnpm install` and `pnpm exec playwright install chromium`; the PDF
 // test also needs Poppler's pdftotext. CI runs it in the browser job.
 
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const http = require("node:http");
-const os = require("node:os");
-const path = require("node:path");
-const { spawnSync } = require("node:child_process");
-const { build } = require("../src/handbook/build.js");
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import http from "node:http";
+import os from "node:os";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+import type { AddressInfo } from "node:net";
+import type { Route } from "playwright";
+import { build } from "../src/handbook/build.ts";
 
-let chromium;
+let chromium: typeof import("playwright").chromium | null = null;
 try {
-  ({ chromium } = require("playwright"));
+  ({ chromium } = await import("playwright"));
 } catch {
   chromium = null;
 }
-const CONFIG = path.join(__dirname, "fixtures", "sample-plugin", "handbook.config.json");
-const TYPES = { ".html": "text/html", ".png": "image/png", ".js": "text/javascript" };
+const CONFIG = path.join(import.meta.dirname, "fixtures", "sample-plugin", "handbook.config.json");
+const TYPES: Record<string, string> = { ".html": "text/html", ".png": "image/png", ".js": "text/javascript" };
 const skip = chromium ? false : "playwright is not installed (pnpm install)";
 
 // The sample's handbook, served the way Pages serves a site.
-function serve(dir) {
+function serve(dir: string): Promise<http.Server> {
   const server = http.createServer((req, res) => {
-    const file = path.join(dir, decodeURIComponent(new URL(req.url, "http://x").pathname).replace(/\/$/, "/index.html"));
+    const file = path.join(dir, decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname).replace(/\/$/, "/index.html"));
     if (!file.startsWith(dir) || !fs.existsSync(file)) return res.writeHead(404).end();
     res.writeHead(200, { "content-type": TYPES[path.extname(file)] || "application/octet-stream" }).end(fs.readFileSync(file));
   });
-  return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
+  return new Promise<http.Server>((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
 }
 
 test("the handbook page works in a browser", { skip }, async (t) => {
-  const out = fs.mkdtempSync(path.join(os.tmpdir(), "plugin-site-browser-"));
+  if (!chromium) return;
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "components-browser-"));
   const r = build({ config: CONFIG, out, pdf: false });
   assert.deepEqual(r.problems, []);
   const server = await serve(out);
-  const url = `http://127.0.0.1:${server.address().port}/`;
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
   const browser = await chromium.launch();
   t.after(async () => {
     await browser.close();
     server.close();
   });
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
-  const errors = [];
+  const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   // The page's own requests only: fonts and analytics are left out.
-  await page.route(/^https?:\/\/(?!127\.0\.0\.1)/, (route) => route.abort());
-  await page.route("**/page.js", (route) => route.fulfill({ status: 200, contentType: "text/javascript", body: "" }));
+  await page.route(/^https?:\/\/(?!127\.0\.0\.1)/, (route: Route) => route.abort());
+  await page.route("**/page.js", (route: Route) => route.fulfill({ status: 200, contentType: "text/javascript", body: "" }));
   await page.goto(url);
 
   await t.test("search finds a section and opens it", async () => {
@@ -66,7 +68,7 @@ test("the handbook page works in a browser", { skip }, async (t) => {
 
   await t.test("the contents rail lists every sub-section and marks the one in view", async () => {
     assert.ok(await page.locator("#toc ul ul a").first().isVisible(), "sub-sections are open");
-    await page.evaluate(() => document.getElementById("changelog").scrollIntoView());
+    await page.evaluate(() => document.getElementById("changelog")?.scrollIntoView());
     await page.waitForFunction(() => document.querySelector('#toc a[aria-current]')?.getAttribute("href") === "#changelog");
   });
 
@@ -81,10 +83,10 @@ test("the handbook page works in a browser", { skip }, async (t) => {
     await zoom.scrollIntoViewIfNeeded();
     await zoom.click();
     const box = page.locator("#lightbox");
-    await page.waitForFunction(() => document.getElementById("lightbox").open);
-    assert.match(await box.locator("img").getAttribute("src"), /media\//);
+    await page.waitForFunction(() => (document.getElementById("lightbox") as HTMLDialogElement).open);
+    assert.match((await box.locator("img").getAttribute("src")) ?? "", /media\//);
     await box.locator("img").click();
-    await page.waitForFunction(() => !document.getElementById("lightbox").open);
+    await page.waitForFunction(() => !(document.getElementById("lightbox") as HTMLDialogElement).open);
   });
 
   assert.deepEqual(errors, [], "no script error on the page");
@@ -93,15 +95,15 @@ test("the handbook page works in a browser", { skip }, async (t) => {
 const pdftotext = spawnSync("pdftotext", ["-v"]).error ? "pdftotext (Poppler) is not installed" : false;
 
 test("the PDF prints with numbered contents", { skip: skip || pdftotext }, () => {
-  const out = fs.mkdtempSync(path.join(os.tmpdir(), "plugin-site-pdf-"));
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "components-pdf-"));
   const previous = process.env.CHROME_PATH;
-  process.env.CHROME_PATH = chromium.executablePath();
+  process.env.CHROME_PATH = chromium?.executablePath() ?? "";
   try {
     const r = build({ config: CONFIG, out, pdf: true });
     assert.deepEqual(r.problems, []);
     assert.ok(fs.existsSync(path.join(out, "scenario-sample-handbook-1.2.3.pdf")));
-    assert.ok(r.pages >= 3, `${r.pages} pages`);
-    const text = spawnSync("pdftotext", ["-layout", r.pdf, "-"], { encoding: "utf8" }).stdout;
+    assert.ok((r.pages ?? 0) >= 3, `${r.pages} pages`);
+    const text = spawnSync("pdftotext", ["-layout", r.pdf ?? "", "-"], { encoding: "utf8" }).stdout;
     assert.match(text, /Contents/);
     assert.match(text, /01\s+Install\s+\.*\s*\d+/, "the contents name each chapter's page");
     assert.match(text, /Scenario for Sample handbook/, "the page footer names the product");

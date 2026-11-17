@@ -1,4 +1,4 @@
-# plugin-site
+# components
 
 The site tooling the Scenario plug-ins share. Each plug-in keeps its docs and a
 `handbook.config.json`; this repository turns them into its handbook and
@@ -11,7 +11,7 @@ publishes its site.
   a single HTML file that works offline; and an A4 PDF. It checks every link
   and picture, and refuses em dashes, machine paths and any address but
   support@scenario.com.
-- **og**: link-preview cards in www.scenario.com's design, BrandFrame
+- **og**: link-preview cards in www.scenario.com's design: its BrandFrame,
   rendered with satori and resvg (below).
 - **The site action**: builds the plug-in's site from its newest published
   release, so the site never describes what people cannot download yet, and
@@ -42,7 +42,7 @@ jobs:
         with:
           node-version: "24"
       - id: site
-        uses: scenario-labs/plugin-site@<sha> # v0.1.0
+        uses: scenario-labs/components@<sha> # v0.1.0
         with:
           download: scenario-maya-{version}.zip
       - uses: actions/upload-pages-artifact@<sha> # vX
@@ -74,10 +74,10 @@ first release, when the site is built from `main`'s docs with no download).
 
 ## Build a handbook locally
 
-From the plug-in's checkout, with Node 22 or later:
+From the plug-in's checkout, with Node 24 or later:
 
 ```sh
-npx github:scenario-labs/plugin-site#v0.1.0 handbook --no-pdf --out build/handbook
+npx github:scenario-labs/components#v0.1.0 handbook --no-pdf --out build/handbook
 ```
 
 `--config <path>` points at another configuration, `--quiet` prints only
@@ -163,14 +163,15 @@ site starts from them:
 - `look.css`: light only, warm paper, terracotta, Instrument Serif headings,
   Instrument Sans text, JetBrains Mono eyebrows, a 760 px reading column; the
   plug-in's own colour in the `--chip` tokens.
-- `components.js`: `header` (wordmark, name chip, version, search, links,
+- `components.ts`: `header` (wordmark, name chip, version, search, links,
   App Login), `toc` (every entry open, group labels), `hero` (eyebrow, serif
   title with its italic end, lede, buttons, picture or `film`, `note`), `flow`
   (what goes in, the actions with the price button, what comes back), `wipe`
   (drag to compare two pictures), `steps` (step cards), `part`, `section`,
   `footer`, and `theme` and `FONTS` for the page head. Each returns HTML.
-- `client.js`: their behaviour: the contents rail, search, the compare
-  slider, the film, pictures that enlarge.
+- `client.ts`: their behaviour: the contents rail, search, the compare
+  slider, the film, pictures that enlarge; the builder strips its types and
+  inlines it as a module script.
 
 The handbook builder uses them. In the docs, two before-and-after pictures in
 one paragraph (paths with `before-after/`) become a compare slider; the text
@@ -179,20 +180,28 @@ before a colon in each picture's alt is its label.
 ## og
 
 `src/og/` makes the 1200 x 630 link-preview cards (Open Graph, X) in
-www.scenario.com's design: `brand-frame.js` and `truchet.js` are
-scenario-com-landing-page's `BrandFrame` and `lib/truchet` in plain
-JavaScript, rendered as `next/og` renders them, satori to SVG and resvg to
-PNG, with Instrument Sans and Serif bundled (`fonts/`, OFL). With a picture,
+www.scenario.com's design, with scenario-com-landing-page's own TypeScript,
+copied with its paths (`components/BrandFrame.tsx`, `BrandFrameWithImage.tsx`,
+`lib/truchet/`, `lib/og/fonts.ts`, `colorize-image.ts`, `resolve-image.ts`,
+`lib/share-tags.ts`); each file names its source commit and its few changes
+(import paths, the fonts and logo found beside it). `index.ts` renders them as
+the site's `opengraph-image` routes do through `next/og`, satori to SVG and
+resvg to PNG, with the same fonts (`fonts/`, OFL), logo recolouring (sharp) and
+picture resizing, so WebP pictures work too. With a picture,
 the card follows the /campaign/blender card: the picture fills the frame,
 title and line in the frame's beige; without one, the Truchet pattern seeded
 by the title.
 
 ```sh
-plugin-site og --title "Scenario for Maya" --subtitle "One line." --image docs/media/hero.png --out og.png
+components og --title "Scenario for Maya" --subtitle "One line." --image docs/media/hero.png --out og.png
 ```
 
-The handbook builder renders `og.png` with it and points `og:image` there.
-satori and resvg are plugin-site's only runtime dependencies; the action
+The handbook builder renders `og.png` with it, points `og:image` there and
+keeps the share tags at the top of `<head>`: Slack reads only the first
+32 KB of a page (`lib/share-tags.ts`, checked by the tests). To take a newer
+version of the landing page's files, copy them again and keep the changes
+their headers list.
+tsx, satori, resvg, sharp and React are the runtime dependencies; the action
 installs them from the lockfile.
 
 ## Versions

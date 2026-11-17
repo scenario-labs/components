@@ -1,22 +1,23 @@
-"use strict";
 // The handbook builder, on the sample plug-in in test/fixtures: every doc
 // section it names, every link and picture resolved, the public-content
 // rules kept. The PDF step needs Chrome and is left to a manual build.
 
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
-const { spawnSync } = require("node:child_process");
-const { build } = require("../src/handbook/build.js");
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
+import { build } from "../src/handbook/build.ts";
+import { SHARE_TAG_BUDGET, shareTagsEnd } from "../src/og/lib/share-tags.ts";
 
-const SAMPLE = path.join(__dirname, "fixtures", "sample-plugin");
+const SAMPLE = path.join(import.meta.dirname, "fixtures", "sample-plugin");
 const CONFIG = path.join(SAMPLE, "handbook.config.json");
 const EM_DASH = new RegExp(String.fromCharCode(0x2014));
 
 function buildSample(extra = {}) {
-  const out = fs.mkdtempSync(path.join(os.tmpdir(), "plugin-site-"));
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "components-"));
   const r = build({ config: CONFIG, out, pdf: false, ...extra });
   return { r, out, html: r.problems.length ? "" : fs.readFileSync(path.join(out, "index.html"), "utf8") };
 }
@@ -44,7 +45,7 @@ test("the handbook builds from the plug-in's docs with every link and picture re
   assert.match(html, /class="gallery screen-only"/, "the before and after gallery");
   assert.match(html, /class="flow"/, "the flow diagram");
   assert.match(html, /<li><a href="#troubleshooting">Troubleshooting<\/a><ul><li><a href="#sign-in">Sign-in<\/a><\/li><li><a href="#prices">Prices<\/a><\/li><\/ul>/, "a chapter's h3s are its sub-entries in the contents");
-  assert.ok(!html.includes("plugin-site handbook"), "no build command for readers");
+  assert.ok(!html.includes("components handbook"), "no build command for readers");
   assert.match(html, /class="claim claim-live">Verified live/);
   assert.match(html, /<a href="#install">Install<\/a> to start/, "a chapter id is a link target");
   assert.ok(!EM_DASH.test(html));
@@ -53,6 +54,8 @@ test("the handbook builds from the plug-in's docs with every link and picture re
   assert.ok(!/href="(?!#|https:|mailto:)/.test(single), "and links nothing relative");
   assert.match(html, /<a class="btn-go" href="\/download\/latest">Download<\/a>/, "a site-absolute link stays in the web page");
   assert.match(single, /href="https:\/\/sample\.scenario\.com\/download\/latest"/, "and opens on the site from the single file");
+  const tagsEnd = shareTagsEnd(html);
+  assert.ok(tagsEnd > 0 && tagsEnd < SHARE_TAG_BUDGET, `share tags end at byte ${tagsEnd}: Slack reads 32 KB`);
   assert.match(html, /<meta property="og:image" content="https:\/\/sample\.scenario\.com\/og\.png">/, "the link preview is the rendered card, at an absolute address");
   assert.match(html, /<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">/);
   const card = fs.readFileSync(path.join(out, "og.png"));
@@ -66,7 +69,7 @@ test("the handbook builds from the plug-in's docs with every link and picture re
 });
 
 test("the public-content rules stop the build", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "plugin-site-bad-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "components-bad-"));
   fs.cpSync(SAMPLE, root, { recursive: true });
   const readme = path.join(root, "README.md");
   // Built at run time so this file passes the repository lint itself.
@@ -90,10 +93,11 @@ test("the handbook links to the given ref and checks those links in the given tr
   // release's docs and names the release's commit in HANDBOOK_TREE, where each
   // linked file must be, and HANDBOOK_COMMIT its short id.
   const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd: SAMPLE, encoding: "utf8" }).stdout.trim();
-  const run = (ref, tree) => {
-    const out = fs.mkdtempSync(path.join(os.tmpdir(), "plugin-site-ref-"));
-    const code = `const r = require(${JSON.stringify(path.join(__dirname, "..", "src", "handbook", "build.js"))}).build({ config: ${JSON.stringify(CONFIG)}, out: ${JSON.stringify(out)}, pdf: false }); process.stdout.write(JSON.stringify(r));`;
-    const p = spawnSync(process.execPath, ["-e", code], { encoding: "utf8", env: { ...process.env, HANDBOOK_GITHUB_REF: ref, HANDBOOK_TREE: tree || "", HANDBOOK_COMMIT: "abc1234" } });
+  const run = (ref: string, tree?: string): { r: { problems: string[] }; html: string } => {
+    const out = fs.mkdtempSync(path.join(os.tmpdir(), "components-ref-"));
+    const builder = pathToFileURL(path.join(import.meta.dirname, "..", "src", "handbook", "build.ts")).href;
+    const code = `const { build } = await import(${JSON.stringify(builder)}); const r = build({ config: ${JSON.stringify(CONFIG)}, out: ${JSON.stringify(out)}, pdf: false }); process.stdout.write(JSON.stringify(r));`;
+    const p = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code], { encoding: "utf8", env: { ...process.env, HANDBOOK_GITHUB_REF: ref, HANDBOOK_TREE: tree || "", HANDBOOK_COMMIT: "abc1234" } });
     assert.equal(p.status, 0, p.stderr);
     const r = JSON.parse(p.stdout);
     const html = r.problems.length ? "" : fs.readFileSync(path.join(out, "index.html"), "utf8");
@@ -106,6 +110,6 @@ test("the handbook links to the given ref and checks those links in the given tr
   if (head) {
     // Git's empty tree holds none of the linked files.
     const empty = run("sample-plugin-v9.9.9", "4b825dc642cb6eb9a060e54bf8d69288fbee4904");
-    assert.ok(empty.r.problems.some((p) => / in 4b825dc642cb6eb9a060e54bf8d69288fbee4904$/.test(p)), empty.r.problems.join("\n"));
+    assert.ok(empty.r.problems.some((p: string) => / in 4b825dc642cb6eb9a060e54bf8d69288fbee4904$/.test(p)), empty.r.problems.join("\n"));
   }
 });

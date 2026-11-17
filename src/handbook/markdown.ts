@@ -1,4 +1,3 @@
-"use strict";
 // A small Markdown reader for the subset the repository docs use: ATX
 // headings, paragraphs, nested ordered and unordered lists, fenced code,
 // block quotes, pipe tables, emphasis, inline code, links, images and inline
@@ -14,20 +13,36 @@ const HEADING = /^ {0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;
 const HTML_HEADING = /^<h([1-6])\b[^>]*>(.*?)<\/h\1>$/i;
 const TABLE_SEP = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
 
-function indentOf(line) {
-  const m = /^ */.exec(line);
-  return m[0].length;
+/** Set on every block by the builder: its anchor (headings) and the doc it comes from. */
+interface Placed {
+  id?: string;
+  file?: string;
+  /** A heading's anchor in its own doc, before the handbook renames it. */
+  origSlug?: string;
+}
+export type Block = Placed &
+  (
+    | { type: "code"; lang: string; text: string }
+    | { type: "heading"; level: number; text: string }
+    | { type: "quote"; children: Block[] }
+    | { type: "table"; head: string[]; rows: string[][] }
+    | { type: "list"; ordered: boolean; start: number; items: Block[][] }
+    | { type: "para"; text: string }
+  );
+
+function indentOf(line: string): number {
+  return (/^ */.exec(line)?.[0] ?? "").length;
 }
 
-function startsBlock(line) {
+function startsBlock(line: string): boolean {
   return HEADING.test(line) || FENCE.test(line) || /^ {0,3}>/.test(line) || LIST_ITEM.test(line) || /^\s*\|/.test(line);
 }
 
-function splitRow(line) {
+function splitRow(line: string): string[] {
   let s = line.trim();
   if (s.startsWith("|")) s = s.slice(1);
   if (s.endsWith("|") && !s.endsWith("\\|")) s = s.slice(0, -1);
-  const cells = [];
+  const cells: string[] = [];
   let cur = "";
   let inCode = false;
   for (let i = 0; i < s.length; i++) {
@@ -49,23 +64,24 @@ function splitRow(line) {
   return cells;
 }
 
-function parseBlocks(lines) {
-  const out = [];
+function parseBlocks(lines: string[]): Block[] {
+  const out: Block[] = [];
   let i = 0;
   while (i < lines.length) {
-    const line = lines[i];
+    const line = lines[i] ?? "";
     if (!line.trim()) {
       i++;
       continue;
     }
-    let m;
+    let m: RegExpExecArray | null;
     if ((m = FENCE.exec(line))) {
-      const fence = m[2];
-      const pad = m[1].length;
-      const body = [];
+      const fence = m[2] ?? "";
+      const pad = (m[1] ?? "").length;
+      const body: string[] = [];
       i++;
-      while (i < lines.length && !lines[i].trim().startsWith(fence)) {
-        body.push(lines[i].slice(Math.min(pad, indentOf(lines[i]))));
+      while (i < lines.length && !(lines[i] ?? "").trim().startsWith(fence)) {
+        const l = lines[i] ?? "";
+        body.push(l.slice(Math.min(pad, indentOf(l))));
         i++;
       }
       i++;
@@ -73,44 +89,45 @@ function parseBlocks(lines) {
       continue;
     }
     if ((m = HEADING.exec(line))) {
-      out.push({ type: "heading", level: m[1].length, text: m[2] });
+      out.push({ type: "heading", level: (m[1] ?? "").length, text: m[2] ?? "" });
       i++;
       continue;
     }
     if (/^ {0,3}>/.test(line)) {
-      const body = [];
-      while (i < lines.length && lines[i].trim() && /^ {0,3}>/.test(lines[i])) {
-        body.push(lines[i].replace(/^ {0,3}> ?/, ""));
+      const body: string[] = [];
+      while (i < lines.length && (lines[i] ?? "").trim() && /^ {0,3}>/.test(lines[i] ?? "")) {
+        body.push((lines[i] ?? "").replace(/^ {0,3}> ?/, ""));
         i++;
       }
       out.push({ type: "quote", children: parseBlocks(body) });
       continue;
     }
-    if (/^\s*\|/.test(line) && i + 1 < lines.length && TABLE_SEP.test(lines[i + 1])) {
+    if (/^\s*\|/.test(line) && i + 1 < lines.length && TABLE_SEP.test(lines[i + 1] ?? "")) {
       const head = splitRow(line);
-      const rows = [];
+      const rows: string[][] = [];
       i += 2;
-      while (i < lines.length && /^\s*\|/.test(lines[i])) {
-        rows.push(splitRow(lines[i]));
+      while (i < lines.length && /^\s*\|/.test(lines[i] ?? "")) {
+        rows.push(splitRow(lines[i] ?? ""));
         i++;
       }
       out.push({ type: "table", head, rows });
       continue;
     }
     if ((m = LIST_ITEM.exec(line))) {
-      const ordered = /\d/.test(m[2]);
-      const base = m[1].length;
-      const start = ordered ? parseInt(m[2], 10) : 1;
-      const items = [];
+      const marker = m[2] ?? "";
+      const ordered = /\d/.test(marker);
+      const base = (m[1] ?? "").length;
+      const start = ordered ? parseInt(marker, 10) : 1;
+      const items: Block[][] = [];
       while (i < lines.length) {
-        const im = LIST_ITEM.exec(lines[i]);
-        if (!im || im[1].length !== base || /\d/.test(im[2]) !== ordered) break;
-        const content = im[1].length + im[2].length + Math.max(1, Math.min(im[3].length, 4));
-        const body = [lines[i].slice(content)];
+        const im = LIST_ITEM.exec(lines[i] ?? "");
+        if (!im || (im[1] ?? "").length !== base || /\d/.test(im[2] ?? "") !== ordered) break;
+        const content = (im[1] ?? "").length + (im[2] ?? "").length + Math.max(1, Math.min((im[3] ?? "").length, 4));
+        const body = [(lines[i] ?? "").slice(content)];
         i++;
         let sawBlank = false;
         while (i < lines.length) {
-          const l = lines[i];
+          const l = lines[i] ?? "";
           if (!l.trim()) {
             body.push("");
             sawBlank = true;
@@ -130,20 +147,20 @@ function parseBlocks(lines) {
           }
           break;
         }
-        while (body.length && !body[body.length - 1].trim()) body.pop();
+        while (body.length && !(body[body.length - 1] ?? "").trim()) body.pop();
         items.push(parseBlocks(body));
       }
       out.push({ type: "list", ordered, start, items });
       continue;
     }
     if ((m = HTML_HEADING.exec(line.trim()))) {
-      out.push({ type: "heading", level: Number(m[1]), text: normalizeHtml(m[2]) });
+      out.push({ type: "heading", level: Number(m[1]), text: normalizeHtml(m[2] ?? "") });
       i++;
       continue;
     }
-    const para = [];
-    while (i < lines.length && lines[i].trim() && !(para.length && startsBlock(lines[i]))) {
-      para.push(lines[i].trim());
+    const para: string[] = [];
+    while (i < lines.length && (lines[i] ?? "").trim() && !(para.length && startsBlock(lines[i] ?? ""))) {
+      para.push((lines[i] ?? "").trim());
       i++;
     }
     const text = normalizeHtml(para.join("\n"));
@@ -155,12 +172,12 @@ function parseBlocks(lines) {
 // Layout HTML as Markdown: <p> and <div> wrappers go, <br> is a space,
 // <a href> is a link, and <sub> becomes an italic line (a picture's caption
 // when it follows one). <img> tags stay for the renderer.
-function normalizeHtml(text) {
+function normalizeHtml(text: string): string {
   return String(text)
     .replace(/<\/?(?:p|div|center|span)\b[^>]*>/gi, "")
     .replace(/<br\b[^>]*>/gi, " ")
-    .replace(/<a\b[^>]*\bhref="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, (_, href, label) => `[${label.trim()}](${href})`)
-    .replace(/<sub>([\s\S]*?)<\/sub>/gi, (_, t) => `*${t.trim()}*`)
+    .replace(/<a\b[^>]*\bhref="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, (_, href: string, label: string) => `[${label.trim()}](${href})`)
+    .replace(/<sub>([\s\S]*?)<\/sub>/gi, (_, t: string) => `*${t.trim()}*`)
     .split("\n")
     .map((l) => l.trim())
     .filter((l, k, all) => l || (k > 0 && k < all.length - 1))
@@ -168,12 +185,12 @@ function normalizeHtml(text) {
     .trim();
 }
 
-function parse(source) {
+function parse(source: string): Block[] {
   return parseBlocks(source.replace(/\r\n?/g, "\n").replace(/\t/g, "    ").split("\n"));
 }
 
 // GitHub's heading anchors: lower case, punctuation dropped, spaces to hyphens.
-function slug(text) {
+function slug(text: string): string {
   return plain(text)
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s_-]/gu, "")
@@ -182,7 +199,7 @@ function slug(text) {
 }
 
 // The visible text of an inline Markdown string.
-function plain(text) {
+function plain(text: string): string {
   return String(text)
     .replace(/<img\b[^>]*>/gi, "")
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
@@ -194,4 +211,4 @@ function plain(text) {
     .trim();
 }
 
-module.exports = { parse, slug, plain, normalizeHtml };
+export { parse, slug, plain, normalizeHtml };

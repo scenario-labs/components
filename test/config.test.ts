@@ -1,18 +1,17 @@
-"use strict";
 // handbook.config.json: what is required, what is filled in, and what the action restores.
 
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
-const { spawnSync } = require("node:child_process");
-const { loadConfig, docPaths } = require("../src/handbook/config.js");
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+import { loadConfig, docPaths } from "../src/handbook/config.ts";
 
-const SAMPLE = path.join(__dirname, "fixtures", "sample-plugin");
+const SAMPLE = path.join(import.meta.dirname, "fixtures", "sample-plugin");
 
-function write(config) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "plugin-site-config-"));
+function write(config: unknown): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "components-config-"));
   fs.writeFileSync(path.join(dir, "handbook.config.json"), JSON.stringify(config));
   return dir;
 }
@@ -43,11 +42,11 @@ test("a broken config says what is wrong", () => {
 test("paths lists what the action restores from a release", () => {
   const { config } = loadConfig("handbook.config.json", SAMPLE);
   assert.deepEqual(docPaths(config, "handbook.config.json"), ["handbook.config.json", "version.json", "README.md", "docs/PRIVACY.md", "CHANGELOG.md", "docs/media"]);
-  const cli = spawnSync(process.execPath, [path.join(__dirname, "..", "bin", "plugin-site.js"), "paths"], { cwd: SAMPLE, encoding: "utf8" });
+  const cli = spawnSync(process.execPath, [path.join(import.meta.dirname, "..", "bin", "components.mjs"), "paths"], { cwd: SAMPLE, encoding: "utf8" });
   assert.equal(cli.status, 0, cli.stderr);
   assert.equal(cli.stdout, "handbook.config.json\nversion.json\nREADME.md\ndocs/PRIVACY.md\nCHANGELOG.md\ndocs/media\n");
   // From the repository root, as the action runs it, the same paths under the config's folder.
-  const fromRoot = spawnSync(process.execPath, ["bin/plugin-site.js", "paths", "--config", "test/fixtures/sample-plugin/handbook.config.json"], { cwd: path.join(__dirname, ".."), encoding: "utf8" });
+  const fromRoot = spawnSync(process.execPath, ["bin/components.mjs", "paths", "--config", "test/fixtures/sample-plugin/handbook.config.json"], { cwd: path.join(import.meta.dirname, ".."), encoding: "utf8" });
   assert.equal(fromRoot.stdout.split("\n")[0], "test/fixtures/sample-plugin/handbook.config.json");
   assert.equal(fromRoot.stdout.split("\n")[5], "test/fixtures/sample-plugin/docs/media");
 });

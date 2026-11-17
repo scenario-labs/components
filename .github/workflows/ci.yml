@@ -24,8 +24,12 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - name: No em dashes, machine paths or stray addresses; JSON and JavaScript parse; actions pinned
-        run: node tools/lint.js
+      - name: Install the dependencies
+        run: npx --yes pnpm@12.10.1 install --frozen-lockfile
+      - name: No em dashes, machine paths or stray addresses; TypeScript only; JSON parses; actions pinned
+        run: node --import tsx tools/lint.ts
+      - name: Types (tsc, strict)
+        run: npx tsc --noEmit
 
   test:
     name: test (${{ matrix.os }})
@@ -42,11 +46,12 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      # satori and resvg, for the link-preview cards, at the lockfile's versions.
+      # tsx, which runs the TypeScript, and the link-preview cards' renderers,
+      # at the lockfile's versions.
       - name: Install the runtime dependencies
         run: npx --yes pnpm@12.10.1 install --prod --frozen-lockfile
       - name: The handbook builder and the link-preview cards against the sample plug-in
-        run: node --test --test-reporter=spec test/config.test.js test/handbook.test.js test/markdown.test.js test/og.test.js
+        run: node --import tsx --test --test-reporter=spec test/config.test.ts test/handbook.test.ts test/markdown.test.ts test/og.test.ts
 
   # The built page in Playwright's Chromium (search, theme, contents, lightbox)
   # and the PDF with Poppler's pdftotext.
@@ -71,7 +76,7 @@ jobs:
       - name: The handbook in a browser, and its PDF
         env:
           CHROME_FLAGS: --no-sandbox
-        run: node --test --test-reporter=spec test/browser.test.js
+        run: node --import tsx --test --test-reporter=spec test/browser.test.ts
 
   # action.yml end to end on the sample plug-in, with a stand-in gh
   # (test/action/gh): before the first release, then from a release whose tag

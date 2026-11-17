@@ -1,6 +1,6 @@
 # Support
 
-plugin-site is the open-source site tooling of the Scenario plug-ins,
+components is the open-source site tooling of the Scenario plug-ins,
 maintained by Scenario.
 
 ## Using it
@@ -11,8 +11,8 @@ is a complete example.
 
 ## Bugs, change requests and questions
 
-Use the [issue chooser](https://github.com/scenario-labs/plugin-site/issues/new/choose).
-Search the [existing issues](https://github.com/scenario-labs/plugin-site/issues)
+Use the [issue chooser](https://github.com/scenario-labs/components/issues/new/choose).
+Search the [existing issues](https://github.com/scenario-labs/components/issues)
 first. A problem with a plug-in itself, or with what its docs say, belongs in
 that plug-in's repository.
 
