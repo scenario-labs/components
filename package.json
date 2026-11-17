@@ -1,6 +1,6 @@
 {
   "name": "@scenario-labs/components",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Shared site tooling for the Scenario plug-ins: components-lib (the sites' look), the handbook builder, link-preview cards and the action that publishes a plug-in's site.",
   "license": "MIT",
   "private": true,
