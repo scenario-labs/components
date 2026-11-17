@@ -1,4 +1,4 @@
-# plugin-site: agent instructions
+# components: agent instructions
 
 Root `AGENTS.md` is the repository rulebook; `.claude/CLAUDE.md` links here.
 [README.md](README.md) describes the tooling for the plug-ins that use it.
@@ -9,53 +9,60 @@ The site tooling the Scenario plug-ins share, so each plug-in repository keeps
 only its docs and a small configuration:
 
 - the handbook builder: a plug-in's Markdown docs to one searchable page, a
-  single-file HTML handbook and an A4 PDF (`plugin-site handbook`);
+  single-file HTML handbook and an A4 PDF (`components handbook`);
 - `action.yml`: the composite action a plug-in's Pages workflow runs to build
   its site from its newest release and add the checked release package.
 
-Plug-ins pin a release of this repository (a tag or its commit SHA). Plain
-JavaScript on Node's built-in modules, plus satori and resvg for the
-link-preview cards: a plug-in runs it with
-`npx github:scenario-labs/plugin-site#<ref>` or through the action. The
-builder was ported from photoshop-plugin's `tools/handbook`, the cards from
-scenario-com-landing-page's `BrandFrame`.
+Plug-ins pin a release of this repository (a tag or its commit SHA). It is
+TypeScript, run by tsx on Node 24 with no build step: a plug-in runs it with
+`npx github:scenario-labs/components#<ref>` or through the action. The
+builder was ported from photoshop-plugin's `tools/handbook`, the cards are
+scenario-com-landing-page's `BrandFrame` and its helpers, copied.
 
 ## Code map
 
-- `bin/plugin-site.js`: the command line: `handbook` (build) and `paths` (the
-  repository paths a handbook is built from, for the action).
+- `bin/components.mjs`: the command's entry, the repository's only
+  JavaScript: it registers tsx and runs `src/cli.ts` (Node will not strip
+  types under `node_modules`, where npx installs the package, nor compile JSX).
+- `src/cli.ts`: the commands: `handbook` (build), `paths` (the repository
+  paths a handbook is built from, for the action) and `og` (a card).
 - `src/handbook/`:
-  - `config.js`: reads and checks `handbook.config.json`, fills the defaults,
-    lists the doc paths.
-  - `markdown.js`: the Markdown subset the docs use, and the layout HTML
-    READMEs add (`<p align>`, `<a>`, `<sub>`, `<h1>`) read as Markdown.
-  - `build.js`: chapters from doc sections, links and pictures resolved,
+  - `config.ts`: reads and checks `handbook.config.json`, fills the defaults,
+    lists the doc paths; the `Config` type.
+  - `markdown.ts`: the Markdown subset the docs use, and the layout HTML
+    READMEs add (`<p align>`, `<a>`, `<sub>`, `<h1>`) read as Markdown; the
+    `Block` type.
+  - `build.ts`: chapters from doc sections, links and pictures resolved,
     the web page, the single file and the PDF, and the public-content checks.
-  - `style.js`: what the handbook adds to components-lib's look (pictures,
-    screenshot rows, check labels, lightbox, the A4 print sheet).
+  - `handbook.css`: what the handbook adds to components-lib's look
+    (pictures, screenshot rows, check labels, lightbox, the A4 print sheet).
     `scenario-logo.svg`.
 - `src/components-lib/`: the plug-in sites' look and components, taken from
-  photoshop.scenario.com: `look.css`, `components.js` (HTML builders),
-  `client.js` (behaviour). README.md, "components-lib".
-- `src/og/`: link-preview cards: `brand-frame.js` and `truchet.js`
-  (www.scenario.com's BrandFrame and Truchet pattern, ported), `index.js`
-  (fonts, logo, satori and resvg render, the `og` command), `fonts/` (OFL).
+  photoshop.scenario.com: `look.css`, `components.ts` (HTML builders),
+  `client.ts` (behaviour, stripped of types by esbuild when inlined).
+  README.md, "components-lib".
+- `src/og/`: link-preview cards: scenario-com-landing-page's TypeScript,
+  copied (`components/`, `lib/truchet/`, `lib/og/`, `lib/share-tags.ts`;
+  each file's header names its source and changes), `lib/og/fetch-buffer.ts`
+  (local files instead of Vercel Blob), `index.ts` (render and the `og`
+  command), `fonts/` (OFL).
 - `action.yml`: release lookup, docs restored from the release's commit,
   handbook build, release package with its checksum and attestation.
-- `tools/lint.js`: repository checks (below).
+- `tools/lint.ts`: repository checks (below).
 - `test/`: `node:test` suites against `test/fixtures/sample-plugin/`, a small
-  plug-in whose docs cover what the real ones use; `browser.test.js` drives
+  plug-in whose docs cover what the real ones use; `browser.test.ts` drives
   the built page and prints the PDF in Playwright's Chromium; `test/action/gh`
   stands in for the GitHub CLI when CI runs `action.yml`.
 
 ## Commands
 
 ```sh
-pnpm install --frozen-lockfile              # commitlint and Playwright (Node from .nvmrc)
-pnpm browsers                               # Playwright's Chromium, for test/browser.test.js
-node --test test/*.test.js                  # the tests (pnpm test); the browser and PDF ones skip without Playwright or pdftotext
-node tools/lint.js                          # em dashes, machine paths, addresses, JSON, JS, action pins (pnpm lint)
-node bin/plugin-site.js handbook --config <plug-in>/handbook.config.json --no-pdf --out build/handbook
+pnpm install --frozen-lockfile              # tsx, the card renderers, TypeScript, commitlint, Playwright (Node from .nvmrc)
+pnpm browsers                               # Playwright's Chromium, for test/browser.test.ts
+pnpm test                                   # node --import tsx --test test/*.test.ts; the browser and PDF ones skip without Playwright or pdftotext
+pnpm typecheck                              # tsc --noEmit, strict
+pnpm lint                                   # em dashes, machine paths, addresses, JSON, TypeScript only, action pins
+node bin/components.mjs handbook --config <plug-in>/handbook.config.json --no-pdf --out build/handbook
 ```
 
 The PDF needs Google Chrome (`CHROME_PATH`) and, for its contents' page
@@ -65,8 +72,8 @@ numbers, Poppler's `pdftotext`; the tests build without it.
 
 | Workflow | When | What |
 | --- | --- | --- |
-| `ci.yml` | pull requests, `main` | `lint`, `test` (Linux, macOS, Windows), `browser` (the page in Chromium, the PDF), `action` (`action.yml` before and after a release, stand-in `gh`), `agents` (shared skills valid and linked); `ci-ok` requires them all |
-| `pr-name.yml`, `commitlint.yml` | pull requests | `pr-title` and `commits` against `commitlint.config.mjs` |
+| `ci.yml` | pull requests, `main` | `lint` (with `tsc`), `test` (Linux, macOS, Windows), `browser` (the page in Chromium, the PDF), `action` (`action.yml` before and after a release, stand-in `gh`), `agents` (shared skills valid and linked); `ci-ok` requires them all |
+| `pr-name.yml`, `commitlint.yml` | pull requests | `pr-title` and `commits` against `commitlint.config.ts` |
 | `links.yml` | pull requests changing Markdown, weekly | links in the docs |
 | `scorecard.yml` | weekly, `main` | OpenSSF Scorecard |
 | `project.yml` | non-draft PRs, when opened, reopened or marked ready | adds them to the Plugins project (31) |
@@ -84,9 +91,12 @@ numbers, Poppler's `pdftotext`; the tests build without it.
 - The handbook is for the people who use a plug-in. Nothing the builder adds
   to it speaks to contributors (build commands, code diagrams, tests); those
   stay in the plug-in's repository.
-- Runtime dependencies: satori and resvg only, for the link-preview cards
-  (`src/og/`); everything else uses Node's built-in modules. All
-  dependencies are pinned in `pnpm-lock.yaml`.
+- TypeScript, strict (`pnpm typecheck`), never JavaScript where TypeScript
+  works; `tools/lint.ts` refuses any JavaScript file but `bin/components.mjs`.
+  Runtime dependencies: tsx (runs the TypeScript), and satori, resvg, sharp
+  and React for the link-preview cards; all pinned in `pnpm-lock.yaml`.
+- `src/og/` copies scenario-com-landing-page's files: change them there
+  first, then copy them again here, keeping the changes their headers list.
 - `.agents/skills/` holds skills shared by every Scenario repository
   (`skills-lock.json`); change them upstream. `.claude/skills/` links to them.
 - No em dashes, in code, docs, commit messages and PR titles.

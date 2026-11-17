@@ -31,7 +31,7 @@ jobs:
     # Drafts wait for ready_for_review. Dependabot runs get no secrets, so its
     # pull requests stay off the board.
     if: >-
-      github.repository == 'scenario-labs/plugin-site' &&
+      github.repository == 'scenario-labs/components' &&
       !github.event.pull_request.draft &&
       github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-24.04

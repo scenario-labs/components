@@ -1,11 +1,10 @@
-"use strict";
 // Builds a Scenario plug-in's handbook from the plug-in repository's Markdown
 // docs, so the handbook never says something the docs do not. Ported from
 // photoshop-plugin's tools/handbook; what differs between plug-ins (the
 // chapters, the product name, the version file, the downloads text) is read
 // from the plug-in's handbook.config.json (README.md, "Configuration").
 //
-//   plugin-site handbook [--config handbook.config.json] [--out <dir>] [--no-pdf] [--quiet]
+//   components handbook [--config handbook.config.json] [--out <dir>] [--no-pdf] [--quiet]
 //
 // Outputs: <out>/index.html with its media under <out>/media/, a single-file
 // <out>/<files>-handbook-<version>.html (pictures embedded; its fonts load
@@ -13,54 +12,121 @@
 // headless Google Chrome (CHROME_PATH, or the default install location). The
 // PDF contents carry page numbers when Poppler's pdftotext is on the PATH.
 
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
-const { spawnSync } = require("node:child_process");
-const md = require("./markdown.js");
-const { CSS } = require("./style.js");
-const ui = require("../components-lib/components.js");
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+import * as md from "./markdown.ts";
+import * as ui from "../components-lib/components.ts";
 const EM_DASH = new RegExp(String.fromCharCode(0x2014));
 
-const { loadConfig } = require("./config.js");
+import { loadConfig } from "./config.ts";
+import type { Chapter, Config } from "./config.ts";
+import type { Block } from "./markdown.ts";
+
+type Mode = "web" | "single" | "print";
+type Para = Extract<Block, { type: "para" }>;
+interface Section {
+  title: string;
+  slug: string;
+  blocks: Block[];
+}
+interface Doc {
+  file: string;
+  blocks: Block[];
+  intro: Block[];
+  sections: Section[];
+}
+type Docs = Record<string, Doc>;
+/** A configured chapter with its blocks, each tagged with its doc. */
+interface BuiltChapter extends Chapter {
+  blocks: Block[];
+}
+/** file -> original slug -> handbook id */
+type Anchors = Record<string, Record<string, string>>;
+interface Ctx {
+  anchors: Anchors;
+  fileHome: Record<string, string>;
+  assets: Map<string, string>;
+  problems: string[];
+  mode: Mode;
+}
+interface Img {
+  src: string;
+  alt: string;
+  width?: string;
+  size: { w: number; h: number } | null;
+  repoPath: string;
+}
+interface Meta {
+  version: string;
+  date: string;
+  commit: string;
+  anchors: Anchors;
+  fileHome: Record<string, string>;
+  assets: Map<string, string>;
+  problems: string[];
+  pdf: boolean;
+  pdfName: string;
+  htmlName: string;
+  og?: { src: string; alt: string } | null;
+}
+export interface BuildOptions {
+  config?: string;
+  cwd?: string;
+  out?: string;
+  pdf?: boolean;
+  og?: boolean;
+  quiet?: boolean;
+}
+export interface BuildResult {
+  out: string;
+  version: string;
+  pages: number | null;
+  pdf: string | null;
+  problems: string[];
+}
+// What the handbook adds to the components-lib look (handbook.css).
+const CSS = fs.readFileSync(path.join(import.meta.dirname, "handbook.css"), "utf8");
 const APP_URL = "https://app.scenario.com/";
 
 // Set by build(): the plug-in repository and its configuration.
 let ROOT = "";
-let CONFIG = null;
+// Set by build() before any use.
+let CONFIG = null as unknown as Config;
 let REPO_URL = "";
 let GITHUB_REF = "main";
 let BLOB = "";
 let TREE = "";
-let CHAPTERS = [];
-let FILE_NAMES = {};
+let CHAPTERS: Chapter[] = [];
+let FILE_NAMES: Record<string, string> = {};
 let MEDIA = "docs/media/";
 
 // ---------------------------------------------------------------- options
 
-function parseArgs(argv) {
-  const opts = { config: "handbook.config.json", out: "", pdf: true, quiet: false };
+function parseArgs(argv: string[]): BuildOptions & { config: string; out: string } {
+  const opts: BuildOptions & { config: string; out: string } = { config: "handbook.config.json", out: "", pdf: true, quiet: false };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--no-pdf") opts.pdf = false;
     else if (argv[i] === "--no-og") opts.og = false;
     else if (argv[i] === "--quiet") opts.quiet = true;
-    else if (argv[i] === "--out") opts.out = path.resolve(argv[++i]);
-    else if (argv[i] === "--config") opts.config = argv[++i];
+    else if (argv[i] === "--out") opts.out = path.resolve(argv[++i] ?? "");
+    else if (argv[i] === "--config") opts.config = argv[++i] ?? "";
     else throw new Error(`unknown option ${argv[i]}`);
   }
   return opts;
 }
 
 // The chapters, and the names of linked doc files, come from the plug-in's
-// handbook.config.json: see config.js.
+// handbook.config.json: see config.ts.
 
 // ---------------------------------------------------------------- helpers
 
-const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-const read = (p) => fs.readFileSync(path.join(ROOT, p), "utf8");
-const posix = (p) => p.split(path.sep).join("/");
+const esc = (s: unknown): string => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const read = (p: string): string => fs.readFileSync(path.join(ROOT, p), "utf8");
+const posix = (p: string): string => p.split(path.sep).join("/");
 
-function imageSize(file) {
+function imageSize(file: string): { w: number; h: number } | null {
   const b = fs.readFileSync(file);
   if (b.slice(1, 4).toString() === "PNG") return { w: b.readUInt32BE(16), h: b.readUInt32BE(20) };
   if (b.slice(0, 3).toString() === "GIF") return { w: b.readUInt16LE(6), h: b.readUInt16LE(8) };
@@ -71,7 +137,7 @@ function imageSize(file) {
         i++;
         continue;
       }
-      const m = b[i + 1];
+      const m = b[i + 1] ?? 0;
       const len = b.readUInt16BE(i + 2);
       if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) return { w: b.readUInt16BE(i + 7), h: b.readUInt16BE(i + 5) };
       i += 2 + len;
@@ -80,11 +146,11 @@ function imageSize(file) {
   return null;
 }
 
-const MIME = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".svg": "image/svg+xml", ".mp4": "video/mp4" };
+const MIME: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".svg": "image/svg+xml", ".mp4": "video/mp4" };
 
 // The commit the handbook names: HANDBOOK_COMMIT when Publish site builds a
 // release's docs on main's checkout, else the checkout's own.
-function gitInfo() {
+function gitInfo(): string {
   if (process.env.HANDBOOK_COMMIT) return process.env.HANDBOOK_COMMIT;
   const r = spawnSync("git", ["rev-parse", "--short", "HEAD"], { cwd: ROOT, encoding: "utf8" });
   return r.status === 0 ? r.stdout.trim() : "";
@@ -96,21 +162,21 @@ function gitInfo() {
 // may not be in the release. Otherwise the checkout is that tree: main, or
 // the release commit in the release workflow, whose HANDBOOK_GITHUB_REF tag
 // does not exist yet while the release is a draft.
-function inRepo(target) {
+function inRepo(target: string): boolean {
   if (!TREE) return fs.existsSync(path.join(ROOT, target));
   return spawnSync("git", ["cat-file", "-e", `${TREE}:${target}`], { cwd: ROOT }).status === 0;
 }
 
-function formatDate(d) {
+function formatDate(d: Date): string {
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 }
 
 // ---------------------------------------------------------------- docs
 
-function splitSections(blocks) {
-  const intro = [];
-  const sections = [];
-  let cur = null;
+function splitSections(blocks: Block[]): { intro: Block[]; sections: Section[] } {
+  const intro: Block[] = [];
+  const sections: Section[] = [];
+  let cur: Section | null = null;
   for (const b of blocks) {
     if (b.type === "heading" && b.level === 1) continue;
     if (b.type === "heading" && b.level === 2) {
@@ -123,9 +189,9 @@ function splitSections(blocks) {
   return { intro, sections };
 }
 
-function loadDocs() {
-  const docs = {};
-  const files = [CONFIG.intro.file, CONFIG.intro.guide, ...CHAPTERS.flatMap((c) => (c.parts || []).map((p) => p.file))].filter(Boolean);
+function loadDocs(): Docs {
+  const docs: Docs = {};
+  const files = [CONFIG.intro.file, CONFIG.intro.guide, ...CHAPTERS.flatMap((c) => (c.parts || []).map((p) => p.file))].filter((f): f is string => Boolean(f));
   for (const file of new Set(files)) {
     const blocks = md.parse(read(file));
     docs[file] = { file, blocks, ...splitSections(blocks) };
@@ -133,35 +199,36 @@ function loadDocs() {
   return docs;
 }
 
-function headingClone(b, level, file) {
+function headingClone(b: { text: string }, level: number, file: string): Block {
   return { type: "heading", level, text: b.text, file, origSlug: md.slug(b.text) };
 }
 
 // Turns the chapter config into a list of chapters with their blocks, each
 // block tagged with the doc it came from, and every heading given an id.
-function assemble(docs) {
-  const ids = new Set();
-  const anchors = {}; // file -> original slug -> id
-  const fileHome = {}; // file -> chapter id where it starts
+function assemble(docs: Docs): { chapters: BuiltChapter[]; anchors: Anchors; fileHome: Record<string, string>; ids: Set<string> } {
+  const ids = new Set<string>();
+  const anchors: Anchors = {}; // file -> original slug -> id
+  const fileHome: Record<string, string> = {}; // file -> chapter id where it starts
   const reserved = new Set(CHAPTERS.map((c) => c.id));
-  const take = (id, prefix) => {
+  const take = (id: string, prefix: string): string => {
     let v = id;
     if (prefix && (ids.has(v) || reserved.has(v))) v = `${prefix}-${id}`;
     for (let n = 2; ids.has(v); n++) v = `${id}-${n}`;
     ids.add(v);
     return v;
   };
-  const mapAnchor = (file, s, id) => {
-    anchors[file] = anchors[file] || {};
-    if (!(s in anchors[file])) anchors[file][s] = id;
+  const mapAnchor = (file: string, s: string, id: string): void => {
+    const map = (anchors[file] = anchors[file] || {});
+    if (!(s in map)) map[s] = id;
   };
-  const chapters = [];
+  const chapters: BuiltChapter[] = [];
   for (const c of CHAPTERS) {
-    const ch = { ...c, id: c.id, blocks: [] };
+    const ch: BuiltChapter = { ...c, id: c.id, blocks: [] };
     ids.add(c.id);
     for (const part of c.parts || []) {
       const doc = docs[part.file];
-      const tag = (b) => ({ ...b, file: part.file });
+      if (!doc) throw new Error(`${part.file}: not read`);
+      const tag = (b: Block): Block => ({ ...b, file: part.file });
       if (!(part.file in fileHome)) fileHome[part.file] = ch.id;
       if (part.section) {
         const sec = doc.sections.find((s) => s.title === part.section);
@@ -185,9 +252,10 @@ function assemble(docs) {
     for (const b of ch.blocks) {
       if (b.type !== "heading") continue;
       if (b.level < 3) b.level = 3;
-      b.origSlug = b.origSlug || md.slug(b.text);
-      b.id = take(b.origSlug, ch.id);
-      mapAnchor(b.file, b.origSlug, b.id);
+      const orig = b.origSlug || md.slug(b.text);
+      b.origSlug = orig;
+      b.id = take(orig, ch.id);
+      mapAnchor(b.file ?? "", orig, b.id);
     }
     chapters.push(ch);
   }
@@ -197,14 +265,16 @@ function assemble(docs) {
 // ---------------------------------------------------------------- rendering
 
 class Renderer {
-  constructor(ctx) {
-    this.ctx = ctx; // { anchors, fileHome, assets, problems, mode }
+  ctx: Ctx;
+
+  constructor(ctx: Ctx) {
+    this.ctx = ctx;
   }
 
   // A link or image target in doc `file`, resolved for the handbook.
-  resolve(file, href, kind) {
+  resolve(file: string, href: string, kind: "img" | "link"): string {
     if (/^(https?:|mailto:)/.test(href)) return href;
-    const [p, frag] = href.split("#");
+    const [p, frag = ""] = href.split("#");
     if (!p) return this.anchor(file, frag, href);
     const target = posix(path.normalize(path.join(path.dirname(file), p)));
     if (target.startsWith(MEDIA)) return this.asset(target, kind);
@@ -216,9 +286,9 @@ class Renderer {
     return BLOB + target + (frag ? `#${frag}` : "");
   }
 
-  anchor(file, frag, href, from) {
+  anchor(file: string, frag: string, href: string, from?: string): string {
     // A chapter id is a target from any doc ("[Install](#install)").
-    const id = (this.ctx.anchors[file] && this.ctx.anchors[file][frag]) || (CHAPTERS.some((c) => c.id === frag) ? frag : null);
+    const id = this.ctx.anchors[file]?.[frag] || (CHAPTERS.some((c) => c.id === frag) ? frag : null);
     if (!id) {
       this.ctx.problems.push(`${from || file}: link ${href} has no target in the handbook`);
       return `#${frag}`;
@@ -226,7 +296,7 @@ class Renderer {
     return `#${id}`;
   }
 
-  asset(target, kind) {
+  asset(target: string, kind: "img" | "link"): string {
     const abs = path.join(ROOT, target);
     if (!fs.existsSync(abs)) {
       this.ctx.problems.push(`missing media ${target}`);
@@ -239,7 +309,7 @@ class Renderer {
     return BLOB + target;
   }
 
-  imgTag(file, src, alt, width) {
+  imgTag(file: string, src: string, alt: string, width?: string): Img {
     const abs = path.join(ROOT, posix(path.normalize(path.join(path.dirname(file), src))));
     const size = fs.existsSync(abs) ? imageSize(abs) : null;
     return { src: this.resolve(file, src, "img"), alt, width, size, repoPath: posix(path.relative(ROOT, abs)) };
@@ -247,33 +317,34 @@ class Renderer {
 
   // Inline Markdown to HTML. Code spans and images are set aside first so
   // their text is never read as emphasis or links.
-  inline(text, file) {
-    const keep = [];
-    const hold = (html) => `\u0000${keep.push(html) - 1}\u0000`;
+  inline(text: string, file: string): string {
+    const keep: string[] = [];
+    const hold = (html: string): string => `\u0000${keep.push(html) - 1}\u0000`;
     let s = String(text).replace(/\n/g, " ");
-    s = s.replace(/`([^`]+)`/g, (_, c) => hold(`<code>${esc(c)}</code>`));
+    s = s.replace(/`([^`]+)`/g, (_, c: string) => hold(`<code>${esc(c)}</code>`));
     s = s.replace(/<img\b[^>]*>/gi, (tag) => {
       const a = attrs(tag);
       const im = this.imgTag(file, a.src || "", a.alt || "", a.width);
       return hold(`<img src="${esc(im.src)}" alt="${esc(im.alt)}" loading="lazy">`);
     });
     s = esc(s);
-    s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_, alt, src) => {
+    s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_, alt: string, src: string) => {
       const im = this.imgTag(file, src, unesc(alt));
       return hold(`<img src="${esc(im.src)}" alt="${esc(im.alt)}" loading="lazy">`);
     });
-    s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, label, href) => {
+    s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, label: string, href: string) => {
       const raw = unesc(href);
       const url = this.resolve(file, raw, "link");
       let shown = label;
       const bare = restore(label, keep).replace(/<\/?code>/g, "");
       const target = /^https?:/.test(raw) ? null : posix(path.normalize(path.join(path.dirname(file), raw.split("#")[0] || path.basename(file))));
-      if (target && FILE_NAMES[target] && (bare === raw || bare === path.basename(target) || bare === target || bare === raw.split("#")[0])) shown = esc(FILE_NAMES[target]);
+      const named = target ? FILE_NAMES[target] : undefined;
+      if (target && named && (bare === raw || bare === path.basename(target) || bare === target || bare === raw.split("#")[0])) shown = esc(named);
       const ext = /^https?:/.test(url) ? ' rel="noopener"' : "";
       return hold(`<a href="${esc(url)}"${ext}>${shown}</a>`);
     });
     s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-    s = s.replace(/(^|[^\w*])\*([^*\s][^*]*?)\*(?![\w*])/g, (_, pre, t) => {
+    s = s.replace(/(^|[^\w*])\*([^*\s][^*]*?)\*(?![\w*])/g, (_, pre: string, t: string) => {
       const claim = claimClass(restore(t, keep));
       return `${pre}<em${claim ? ` class="claim ${claim}"` : ""}>${t}</em>`;
     });
@@ -281,16 +352,17 @@ class Renderer {
   }
 
   // A paragraph made only of pictures, as a figure.
-  figure(b, caption) {
-    const imgs = [];
+  figure(b: Para, caption?: string | null): string | null {
+    const imgs: Img[] = [];
+    const file = b.file ?? "";
     const rest = b.text
       .replace(/<img\b[^>]*>/gi, (tag) => {
         const a = attrs(tag);
-        imgs.push(this.imgTag(b.file, a.src || "", a.alt || "", a.width));
+        imgs.push(this.imgTag(file, a.src || "", a.alt || "", a.width));
         return "";
       })
-      .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_, alt, src) => {
-        imgs.push(this.imgTag(b.file, src, alt));
+      .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_, alt: string, src: string) => {
+        imgs.push(this.imgTag(file, src, alt));
         return "";
       });
     // A caption on the line after the pictures (a README's <sub> line) counts as one.
@@ -298,33 +370,36 @@ class Renderer {
     if (trailing && /^\*[^*][\s\S]*\*$/.test(trailing) && !caption) caption = trailing.slice(1, -1);
     else if (trailing || (!imgs.length && !caption)) return null;
     const figs = CONFIG.figures;
-    const kind = (im) => (figs.beforeAfter && im.repoPath.includes(figs.beforeAfter) ? "ba" : /\.gif$/i.test(im.repoPath) ? "clip" : figs.screens && im.repoPath.includes(figs.screens) ? "screen" : "wide");
-    const cap = caption ? `<p class="fig-note">${this.inline(caption, b.file)}</p>` : "";
+    const kind = (im: Img): "ba" | "clip" | "screen" | "wide" => (figs.beforeAfter && im.repoPath.includes(figs.beforeAfter) ? "ba" : /\.gif$/i.test(im.repoPath) ? "clip" : figs.screens && im.repoPath.includes(figs.screens) ? "screen" : "wide");
+    const cap = caption ? `<p class="fig-note">${this.inline(caption, file)}</p>` : "";
     // An italic paragraph alone, under a table, reads as its caption.
     if (!imgs.length) return cap;
     // Two before-and-after pictures in one paragraph: drag to compare.
     // The slider shows the second picture in the first one's frame, so both
     // must have the same shape; otherwise they stay a row of pictures.
-    const sameShape = (a, b) => a.size && b.size && Math.abs(a.size.w / a.size.h - b.size.w / b.size.h) < 0.02;
-    if (imgs.length === 2 && imgs.every((im) => kind(im) === "ba") && sameShape(imgs[0], imgs[1]) && this.ctx.mode === "web") {
-      const side = (im, fallback) => ({ src: im.src, alt: im.alt, label: im.alt.includes(":") ? im.alt.split(":")[0] : fallback, w: im.size && im.size.w, h: im.size && im.size.h });
-      return ui.wipe(side(imgs[0], "Before"), side(imgs[1], "After"), caption ? this.inline(caption, b.file) : "");
+    const sameShape = (a: Img, b: Img): boolean => !!a.size && !!b.size && Math.abs(a.size.w / a.size.h - b.size.w / b.size.h) < 0.02;
+    const [first, second] = imgs;
+    if (first && second && imgs.length === 2 && imgs.every((im) => kind(im) === "ba") && sameShape(first, second) && this.ctx.mode === "web") {
+      const side = (im: Img, fallback: string): ui.WipeSide => ({ src: im.src, alt: im.alt, label: im.alt.includes(":") ? im.alt.split(":")[0] : fallback, w: im.size?.w, h: im.size?.h });
+      return ui.wipe(side(first, "Before"), side(second, "After"), caption ? this.inline(caption, file) : "");
     }
-    const label = (k) => (k === "ba" ? "Before and after" : k === "clip" ? "Recording" : "");
-    const text = (im) => `${label(kind(im)) ? `<span class="fig-label">${label(kind(im))}</span> ` : ""}${esc(im.alt)}`;
+    const label = (k: string): string => (k === "ba" ? "Before and after" : k === "clip" ? "Recording" : "");
+    const text = (im: Img): string => `${label(kind(im)) ? `<span class="fig-label">${label(kind(im))}</span> ` : ""}${esc(im.alt)}`;
     // Screenshots, and several pictures side by side, as one row with one caption.
-    if (imgs.length > 1 || kind(imgs[0]) === "screen") {
+    if (!first) return cap;
+    if (imgs.length > 1 || kind(first) === "screen") {
       const shots = imgs.map((im) => `<figure class="shot">${zoomable(im)}<figcaption>${text(im)}</figcaption></figure>`).join("");
       return `<div class="shots n${imgs.length}">${shots}${cap}</div>`;
     }
-    const im = imgs[0];
-    return `<figure class="fig fig-${kind(im)}">${zoomable(im)}<figcaption>${text(im)}</figcaption>${cap}</figure>`;
+    return `<figure class="fig fig-${kind(first)}">${zoomable(first)}<figcaption>${text(first)}</figcaption>${cap}</figure>`;
   }
 
-  blocks(list) {
-    const out = [];
+  blocks(list: Block[]): string {
+    const out: string[] = [];
     for (let i = 0; i < list.length; i++) {
       const b = list[i];
+      if (!b) continue;
+      const file = b.file ?? "";
       if (b.type === "para") {
         const next = list[i + 1];
         const cap = next && next.type === "para" && /^\*[^*][\s\S]*[^*]\*$|^\*[^*][\s\S]*\*\*[^*]+\*\*[^*]*\*$/.test(next.text.trim()) ? next.text.trim().slice(1, -1) : null;
@@ -334,26 +409,26 @@ class Renderer {
           if (cap) i++;
           continue;
         }
-        out.push(`<p>${this.inline(b.text, b.file)}</p>`);
+        out.push(`<p>${this.inline(b.text, file)}</p>`);
       } else if (b.type === "heading") {
         const h = `h${Math.min(b.level, 6)}`;
-        out.push(`<${h} id="${b.id}">${this.inline(b.text, b.file)}<a class="anchor" href="#${b.id}" aria-label="Link to this section">#</a></${h}>`);
+        out.push(`<${h} id="${b.id}">${this.inline(b.text, file)}<a class="anchor" href="#${b.id}" aria-label="Link to this section">#</a></${h}>`);
       } else if (b.type === "code") {
         out.push(`<pre><code${b.lang ? ` class="lang-${esc(b.lang)}"` : ""}>${esc(b.text)}</code></pre>`);
       } else if (b.type === "quote") {
-        out.push(`<aside class="callout">${this.blocks(b.children.map((c) => tagFile(c, b.file)))}</aside>`);
+        out.push(`<aside class="callout">${this.blocks(b.children.map((c) => tagFile(c, file)))}</aside>`);
       } else if (b.type === "table") {
-        const head = b.head.map((c) => `<th scope="col">${this.inline(c, b.file)}</th>`).join("");
-        const rows = b.rows.map((r) => `<tr>${r.map((c, k) => (k === 0 ? `<th scope="row">${this.inline(c, b.file)}</th>` : `<td>${this.inline(c, b.file)}</td>`)).join("")}</tr>`).join("");
-        const emptyHead = b.head.every((c, k) => k > 0 ? !c.trim() : true) && b.head.length > 1 && !b.head[1].trim();
+        const head = b.head.map((c) => `<th scope="col">${this.inline(c, file)}</th>`).join("");
+        const rows = b.rows.map((r) => `<tr>${r.map((c, k) => (k === 0 ? `<th scope="row">${this.inline(c, file)}</th>` : `<td>${this.inline(c, file)}</td>`)).join("")}</tr>`).join("");
+        const emptyHead = b.head.every((c, k) => (k > 0 ? !c.trim() : true)) && b.head.length > 1 && !(b.head[1] ?? "").trim();
         out.push(`<div class="table-wrap"><table${emptyHead ? ' class="kv"' : ""}><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>`);
       } else if (b.type === "list") {
         const tag = b.ordered ? "ol" : "ul";
         const items = b.items
           .map((item) => {
-            const kids = item.map((c) => tagFile(c, b.file));
-            if (kids.length === 1 && kids[0].type === "para" && !this.figure(kids[0])) return `<li>${this.inline(kids[0].text, b.file)}</li>`;
-            if (kids.length && kids[0].type === "para" && !this.figure(kids[0])) return `<li>${this.inline(kids[0].text, b.file)}${this.blocks(kids.slice(1))}</li>`;
+            const kids = item.map((c) => tagFile(c, file));
+            const lead = kids[0];
+            if (lead && lead.type === "para" && !this.figure(lead)) return `<li>${this.inline(lead.text, file)}${kids.length > 1 ? this.blocks(kids.slice(1)) : ""}</li>`;
             return `<li>${this.blocks(kids)}</li>`;
           })
           .join("");
@@ -364,30 +439,29 @@ class Renderer {
   }
 }
 
-function tagFile(b, file) {
-  const t = { ...b, file };
-  if (b.type === "list") t.items = b.items.map((it) => it.map((c) => tagFile(c, file)));
-  if (b.type === "quote") t.children = b.children.map((c) => tagFile(c, file));
-  return t;
+function tagFile(b: Block, file: string): Block {
+  if (b.type === "list") return { ...b, file, items: b.items.map((it) => it.map((c) => tagFile(c, file))) };
+  if (b.type === "quote") return { ...b, file, children: b.children.map((c) => tagFile(c, file)) };
+  return { ...b, file };
 }
 
-function attrs(tag) {
-  const a = {};
-  for (const m of tag.matchAll(/([\w-]+)="([^"]*)"/g)) a[m[1].toLowerCase()] = m[2];
+function attrs(tag: string): Record<string, string> {
+  const a: Record<string, string> = {};
+  for (const m of tag.matchAll(/([\w-]+)="([^"]*)"/g)) a[(m[1] ?? "").toLowerCase()] = m[2] ?? "";
   return a;
 }
 
-function unesc(s) {
+function unesc(s: string): string {
   return s.replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
 }
 
-function restore(s, keep) {
+function restore(s: string, keep: string[]): string {
   let out = s;
-  for (let n = 0; n < 4 && out.includes("\u0000"); n++) out = out.replace(/\u0000(\d+)\u0000/g, (_, k) => keep[Number(k)]);
+  for (let n = 0; n < 4 && out.includes("\u0000"); n++) out = out.replace(/\u0000(\d+)\u0000/g, (_, k: string) => keep[Number(k)] ?? "");
   return out;
 }
 
-function claimClass(text) {
+function claimClass(text: string): string {
   const t = text.replace(/<[^>]+>/g, "").trim().toLowerCase();
   if (/^(verified live|seen live)/.test(t)) return "claim-live";
   if (/^not verified live|^not tested/.test(t)) return "claim-none";
@@ -395,7 +469,7 @@ function claimClass(text) {
   return "";
 }
 
-function zoomable(im, eager) {
+function zoomable(im: Img, eager?: boolean): string {
   const size = im.size ? ` width="${im.size.w}" height="${im.size.h}"` : "";
   const load = eager ? ' fetchpriority="high"' : ' loading="lazy" decoding="async"';
   // A width the doc gives the picture (<img width="260">) is its largest size.
@@ -403,8 +477,8 @@ function zoomable(im, eager) {
   return `<button type="button" class="zoom" data-zoom aria-label="Enlarge: ${esc(im.alt)}"${max}><img src="${esc(im.src)}" alt="${esc(im.alt)}"${size}${load}></button>`;
 }
 
-function blockText(list) {
-  const parts = [];
+function blockText(list: Block[]): string {
+  const parts: string[] = [];
   for (const b of list) {
     if (b.type === "para" || b.type === "heading") parts.push(md.plain(b.text));
     else if (b.type === "list") for (const it of b.items) parts.push(blockText(it));
@@ -418,17 +492,17 @@ function blockText(list) {
 // A site-absolute link ("/download/latest", served by the plug-in's site and
 // its proxy) stays as is in the web page and takes the site's address in the
 // single file and the PDF, which are read away from the site.
-function siteHref(href, mode) {
+function siteHref(href: string, mode: Mode): string {
   if (!href.startsWith("/")) return href;
   if (!CONFIG.site) throw new Error(`"${href}" needs "site" in handbook.config.json, the address that serves it`);
   return mode === "web" ? href : `${CONFIG.site.replace(/\/+$/, "")}${href}`;
 }
 
 // The hero picture: the README intro's picture named hero.*, as [alt, src].
-function heroOf(docs) {
-  const block = docs[CONFIG.intro.file].intro.find((b) => b.type === "para" && /^!\[[^\]]*\]\([^)]*hero\.[a-z]+\)$/.test(b.text.trim()));
+function heroOf(docs: Docs): { alt: string; src: string } | null {
+  const block = docs[CONFIG.intro.file]?.intro.find((b): b is Para => b.type === "para" && /^!\[[^\]]*\]\([^)]*hero\.[a-z]+\)$/.test(b.text.trim()));
   const m = block ? /^!\[([^\]]*)\]\(([^)]+)\)$/.exec(block.text.trim()) : null;
-  return m ? { alt: m[1], src: m[2] } : null;
+  return m ? { alt: m[1] ?? "", src: m[2] ?? "" } : null;
 }
 
 // ---------------------------------------------------------------- generated parts
@@ -436,20 +510,20 @@ function heroOf(docs) {
 // The optional "how it works" diagram under the hero: what goes in, the
 // Scenario models (with the price button), what comes back
 // (handbook.config.json "flow").
-function heroDiagram(r) {
+function heroDiagram(r: Renderer): string {
   const flow = CONFIG.flow;
   if (!flow) return "";
   const m = flow.models;
   return ui.flow({
     label: `How ${CONFIG.product} works`,
     from: flow.from,
-    actions: { label: m.label, items: m.items, more: m.more, button: m.button, note: m.note && md.plain(m.note) },
+    actions: { label: m.label, items: m.items, more: m.more, button: m.button, note: m.note ? md.plain(m.note) : undefined },
     to: flow.to,
     foot: flow.note ? [["", r.inline(flow.note, CONFIG.intro.file)]] : []
   });
 }
 
-function gallery(chapters, r) {
+function gallery(chapters: BuiltChapter[], r: Renderer): string {
   // Every before and after picture in the configured chapter, with the
   // action named in the paragraph just above it (handbook.config.json "gallery").
   const g = CONFIG.gallery;
@@ -457,17 +531,17 @@ function gallery(chapters, r) {
   const ch = chapters.find((c) => c.id === g.chapter);
   if (!ch) return "";
   const beforeAfter = new RegExp(`^!\\[([^\\]]*)\\]\\(([^)\\s]*${CONFIG.figures.beforeAfter.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^)\\s]+)\\)$`);
-  const cards = [];
-  let lastAction = null;
+  const cards: string[] = [];
+  let lastAction: string | null = null;
   let lastHeading = ch.id;
   for (const b of ch.blocks) {
-    if (b.type === "heading") lastHeading = b.id;
+    if (b.type === "heading") lastHeading = b.id ?? lastHeading;
     if (b.type !== "para") continue;
     const lead = /^\*\*([^*]+)\*\*/.exec(b.text);
-    if (lead) lastAction = lead[1];
+    if (lead) lastAction = lead[1] ?? null;
     const m = beforeAfter.exec(b.text.trim());
     if (m) {
-      const im = r.imgTag(b.file, m[2], m[1]);
+      const im = r.imgTag(b.file ?? "", m[2] ?? "", m[1] ?? "");
       cards.push(`<li class="ba-card"><a href="#${lastHeading}"><span class="ba-img"><img src="${esc(im.src)}" alt="" loading="lazy"${im.size ? ` width="${im.size.w}" height="${im.size.h}"` : ""}></span><span class="ba-title">${esc(lastAction || "Before and after")}</span><span class="ba-text">${esc(m[1])}</span></a></li>`);
     }
   }
@@ -475,8 +549,8 @@ function gallery(chapters, r) {
   return `<div class="gallery screen-only"><p class="eyebrow">${esc(g.eyebrow || "Before and after")}</p><ul class="ba-grid">${cards.join("")}</ul></div>`;
 }
 
-function downloads(meta, mode, r) {
-  const link = (file, text) => (mode === "web" ? `<a href="${file}">${text}</a>` : `<strong>${text}</strong> (<code>${file}</code>)`);
+function downloads(meta: Meta, mode: Mode, r: Renderer): string {
+  const link = (file: string, text: string): string => (mode === "web" ? `<a href="${file}">${text}</a>` : `<strong>${text}</strong> (<code>${file}</code>)`);
   const lines = CONFIG.downloads.map((line) => `<li>${r.inline(line.replace(/\{version\}/g, meta.version), CONFIG.intro.file)}</li>`);
   return `<ul>
 <li>This handbook, ${meta.version}: ${meta.pdf ? `${link(meta.pdfName, "PDF for print, A4")} and ` : ""}${link(meta.htmlName, "one HTML file that works offline")}.</li>
@@ -485,7 +559,7 @@ ${lines.join("\n")}
 </ul>`;
 }
 
-function licenceExtra(meta) {
+function licenceExtra(meta: Meta): string {
   return `<p>The Scenario logo is a trademark of Scenario and is not covered by the MIT license.</p>
 <p class="build-note">This handbook is generated from the plug-in's docs, version ${meta.version}${meta.commit ? `, commit <code>${meta.commit}</code>` : ""}, ${meta.date}.</p>`;
 }
@@ -495,10 +569,10 @@ function licenceExtra(meta) {
 // The link preview (Open Graph, X): absolute addresses, as link unfurlers ignore
 // relative ones. The handbook's address is the site's, plus HANDBOOK_PATH when
 // the action builds it into a folder.
-function socialMeta(heroImg, meta) {
+function socialMeta(heroImg: Img | null, meta: Meta): string {
   const folder = (process.env.HANDBOOK_PATH || "").replace(/^\/+|\/+$/g, "");
   const base = CONFIG.site ? `${CONFIG.site.replace(/\/+$/, "")}/${folder ? `${folder}/` : ""}` : "";
-  const tags = [
+  const tags: [string, string, string][] = [
     ["property", "og:type", "website"],
     ["property", "og:site_name", "Scenario"],
     ["property", "og:title", `${CONFIG.product} Handbook`],
@@ -518,43 +592,44 @@ function socialMeta(heroImg, meta) {
 }
 
 
-function page(meta, chapters, docs, mode, extra = {}) {
-  const ctx = { anchors: meta.anchors, fileHome: meta.fileHome, assets: meta.assets, problems: meta.problems, mode };
+function page(meta: Meta, chapters: BuiltChapter[], docs: Docs, mode: Mode, extra: { pages?: Record<string, number> } = {}): string {
+  const ctx: Ctx = { anchors: meta.anchors, fileHome: meta.fileHome, assets: meta.assets, problems: meta.problems, mode };
   const r = new Renderer(ctx);
   // The hero comes from the intro of the configured doc (README.md): its
   // first plain paragraph, its hero picture and its first block quote.
   const introFile = CONFIG.intro.file;
   const readme = docs[introFile];
-  const plainPara = (b) => b.type === "para" && !/^!\[|<img\b|^\[!\[/.test(b.text.trim()) && !/^\*\*[^*]+:\*\*/.test(b.text.trim());
+  if (!readme) throw new Error(`${introFile}: not read`);
+  const plainPara = (b: Block): b is Para => b.type === "para" && !/^!\[|<img\b|^\[!\[/.test(b.text.trim()) && !/^\*\*[^*]+:\*\*/.test(b.text.trim());
   const lede = readme.intro.find(plainPara);
-  const notice = readme.intro.find((b) => b.type === "quote");
+  const notice = readme.intro.find((b): b is Extract<Block, { type: "quote" }> => b.type === "quote");
   const guide = CONFIG.intro.guide && docs[CONFIG.intro.guide];
-  const guideIntro = guide ? guide.intro.find((b) => b.type === "para") : null;
+  const guideIntro = guide ? guide.intro.find((b): b is Para => b.type === "para") : undefined;
   const hero = heroOf(docs);
   const heroImg = hero ? r.imgTag(introFile, hero.src, hero.alt) : null;
-  const logo = fs.readFileSync(path.join(__dirname, "scenario-logo.svg"), "utf8").replace(/<!--[\s\S]*?-->\s*/, "").replace("<svg ", '<svg role="img" aria-label="Scenario" ');
+  const logo = fs.readFileSync(path.join(import.meta.dirname, "scenario-logo.svg"), "utf8").replace(/<!--[\s\S]*?-->\s*/, "").replace("<svg ", '<svg role="img" aria-label="Scenario" ');
   const product = esc(CONFIG.product);
 
-  const index = [];
-  const toc = [];
+  const index: { id: string; t: string; c: string; x: string }[] = [];
+  const toc: ui.TocItem[] = [];
   const body = chapters
     .map((ch, n) => {
       let html = r.blocks(ch.blocks);
       if (ch.generated === "downloads") html = downloads(meta, mode, r);
       if (ch.generated === "licence") html += licenceExtra(meta);
       if (CONFIG.gallery && ch.id === (CONFIG.gallery.show || CONFIG.gallery.chapter)) html += gallery(chapters, r);
-      const subs = ch.blocks.filter((b) => b.type === "heading" && b.level === 3);
-      const cfg = CHAPTERS.find((c) => c.id === ch.id) || {};
+      const subs = ch.blocks.filter((b): b is Extract<Block, { type: "heading" }> => b.type === "heading" && b.level === 3);
+      const cfg: Partial<Chapter> = CHAPTERS.find((c) => c.id === ch.id) || {};
       if (cfg.part) toc.push({ group: cfg.part[0] });
       else if (cfg.group) toc.push({ group: cfg.group });
-      toc.push({ id: ch.id, title: ch.title, subs: subs.map((s) => ({ id: s.id, title: md.plain(s.text) })) });
+      toc.push({ id: ch.id, title: ch.title, subs: subs.map((s) => ({ id: s.id ?? "", title: md.plain(s.text) })) });
       // Search entries: the chapter, then each of its h3 sections.
-      const segs = [];
-      let cur = { id: ch.id, title: ch.title, blocks: [] };
+      const segs: { id: string; title: string; blocks: Block[] }[] = [];
+      let cur: { id: string; title: string; blocks: Block[] } = { id: ch.id, title: ch.title, blocks: [] };
       for (const b of ch.blocks) {
         if (b.type === "heading" && b.level === 3) {
           segs.push(cur);
-          cur = { id: b.id, title: md.plain(b.text), blocks: [] };
+          cur = { id: b.id ?? "", title: md.plain(b.text), blocks: [] };
         } else cur.blocks.push(b);
       }
       segs.push(cur);
@@ -566,7 +641,7 @@ ${html}
     })
     .join("\n");
 
-  const chaptersToc = toc.filter((t) => !t.group);
+  const chaptersToc = toc.filter((t): t is Exclude<ui.TocItem, { group: string }> => !("group" in t));
   const pages = extra.pages || {};
   const printToc = `<nav class="print-toc print-only" aria-label="Contents"><h2 class="print-toc-title">Contents</h2><ol>${chaptersToc
     .map((t, n) => `<li><a href="#${t.id}"><span class="pt-num">${String(n + 1).padStart(2, "0")}</span><span class="pt-title">${esc(t.title)}</span><span class="pt-dots"></span><span class="pt-page">${pages[t.id] || "00"}</span></a></li>`)
@@ -604,7 +679,7 @@ ${heroImg ? `<img class="cover-img" src="${esc(heroImg.src)}" alt="">` : ""}
 ${heroDiagram(r)}`;
 
   const searchJson = JSON.stringify(index).replace(/</g, "\\u003c");
-  const links = [...CONFIG.nav.map(([t, href], k) => [t, siteHref(href, mode), k > 0]), ["GitHub", REPO_URL, true]];
+  const links: ui.NavLink[] = [...CONFIG.nav.map(([t, href], k): ui.NavLink => [t, siteHref(href, mode), k > 0]), ["GitHub", REPO_URL, true]];
   const legal = `${product} ${meta.version}${meta.commit ? `, commit <code>${meta.commit}</code>` : ""}, ${meta.date}. <a href="mailto:support@scenario.com">support@scenario.com</a>${CONFIG.trademarks ? `<br>${esc(CONFIG.trademarks)}` : ""}`;
 
   const html = `<!doctype html>
@@ -636,7 +711,7 @@ ${body}
 ${ui.footer([["Source on GitHub", REPO_URL], ["Changelog", "#changelog"], ["Scenario docs", "https://docs.scenario.com"], ["scenario.com", "https://www.scenario.com"]], legal)}
 <dialog class="lightbox" id="lightbox" aria-label="Enlarged picture"><form method="dialog"><button class="lb-close" aria-label="Close">Close</button></form><img alt=""><p class="lb-cap"></p></dialog>
 <script type="application/json" id="search-index">${searchJson}</script>
-<script>${ui.CLIENT}</script>
+<script type="module">${ui.CLIENT}</script>
 </body>
 </html>
 `;
@@ -645,12 +720,12 @@ ${ui.footer([["Source on GitHub", REPO_URL], ["Changelog", "#changelog"], ["Scen
 
 // ---------------------------------------------------------------- checks
 
-function check(full, outDir, label, problems, later = []) {
+function check(full: string, outDir: string, label: string, problems: string[], later: string[] = []): void {
   const html = full.replace(/<script[\s\S]*?<\/script>/g, " ");
   const ids = new Set([...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]));
   for (const m of html.matchAll(/href="#([^"]*)"/g)) if (m[1] && !ids.has(m[1])) problems.push(`${label}: link #${m[1]} has no target`);
   for (const m of html.matchAll(/\s(?:src|href)="([^"#][^"]*)"/g)) {
-    const u = m[1];
+    const u = m[1] ?? "";
     // Site-absolute links ("/download/latest") are the site's to serve.
     if (/^(https?:|mailto:|data:)/.test(u) || u.startsWith("/") || later.includes(u)) continue;
     if (!fs.existsSync(path.join(outDir, u))) problems.push(`${label}: ${u} does not resolve`);
@@ -660,7 +735,8 @@ function check(full, outDir, label, problems, later = []) {
   // another ref, in the checkout.
   const blob = new RegExp(`href="${REPO_URL.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}\\/blob\\/([^/]+)\\/([^"#]+)`, "g");
   for (const m of html.matchAll(blob)) {
-    const ok = m[1] === GITHUB_REF ? inRepo(m[2]) : fs.existsSync(path.join(ROOT, m[2]));
+    const target = m[2] ?? "";
+    const ok = m[1] === GITHUB_REF ? inRepo(target) : fs.existsSync(path.join(ROOT, target));
     if (!ok) problems.push(`${label}: GitHub link to a file not in the repository${m[1] === GITHUB_REF && TREE ? ` at ${TREE}` : ""}: ${m[2]}`);
   }
   const text = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/g, " ");
@@ -675,21 +751,21 @@ function check(full, outDir, label, problems, later = []) {
   const visible = text.replace(/<code>[\s\S]*?<\/code>|<pre[\s\S]*?<\/pre>/g, " ").replace(/<[^>]+>/g, " ");
   for (const [term, prefix] of CONFIG.checks.prefixed) {
     const re = new RegExp(`(.{0,${prefix.length + 1}})\\b${term}\\b`, "g");
-    for (const m of visible.matchAll(re)) if (!m[1].endsWith(`${prefix} `)) problems.push(`${label}: bare "${term}" after "${m[1].trim()}"`);
+    for (const m of visible.matchAll(re)) if (!(m[1] ?? "").endsWith(`${prefix} `)) problems.push(`${label}: bare "${term}" after "${(m[1] ?? "").trim()}"`);
   }
 }
 
 // ---------------------------------------------------------------- PDF
 
-function findChrome() {
-  const c = [process.env.CHROME_PATH, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/google-chrome", "/usr/bin/chromium"].filter(Boolean);
+function findChrome(): string | null {
+  const c = [process.env.CHROME_PATH, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/google-chrome", "/usr/bin/chromium"].filter((p): p is string => Boolean(p));
   return c.find((p) => fs.existsSync(p)) || null;
 }
 
 // The link-preview card: www.scenario.com's BrandFrame, rendered by
-// plugin-site og (src/og) to og.png, with the hero picture unless "og.picture"
+// components og (src/og) to og.png, with the hero picture unless "og.picture"
 // names another. If it cannot be made, the preview keeps the hero picture.
-function renderOg(docs, out) {
+function renderOg(docs: Docs, out: string): { src: string; alt: string } | null {
   const og = CONFIG.og || {};
   const hero = heroOf(docs);
   const picture = og.picture ? path.join(ROOT, og.picture) : hero ? path.join(ROOT, path.dirname(CONFIG.intro.file), hero.src) : null;
@@ -699,15 +775,15 @@ function renderOg(docs, out) {
   if (picture && fs.existsSync(picture)) args.push("--image", picture);
   if (og.textColor) args.push("--text-color", og.textColor);
   if (og.theme !== undefined) args.push("--theme", String(og.theme));
-  const r = spawnSync(process.execPath, [path.join(__dirname, "..", "..", "bin", "plugin-site.js"), ...args], { encoding: "utf8", timeout: 120000 });
+  const r = spawnSync(process.execPath, [path.join(import.meta.dirname, "..", "..", "bin", "components.mjs"), ...args], { encoding: "utf8", timeout: 120000 });
   if (r.status !== 0) {
-    process.stderr.write(`plugin-site handbook: no link-preview card (${(r.stderr || "").trim()}); the preview uses the hero picture\n`);
+    process.stderr.write(`components handbook: no link-preview card (${(r.stderr || "").trim()}); the preview uses the hero picture\n`);
     return null;
   }
   return { src: "og.png", alt: og.subtitle ? `${title}: ${og.subtitle}` : title };
 }
 
-function printPdf(chrome, htmlFile, pdfFile, profile) {
+function printPdf(chrome: string, htmlFile: string, pdfFile: string, profile: string): void {
   const r = spawnSync(
     chrome,
     [
@@ -734,11 +810,11 @@ function printPdf(chrome, htmlFile, pdfFile, profile) {
 }
 
 // The page each chapter starts on, read back from the printed PDF.
-function chapterPages(pdfFile, chapters) {
+function chapterPages(pdfFile: string, chapters: BuiltChapter[]): { found: Record<string, number>; count: number } | null {
   const r = spawnSync("pdftotext", ["-layout", pdfFile, "-"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
   if (r.status !== 0) return null;
   const pages = r.stdout.split("\f");
-  const found = {};
+  const found: Record<string, number> = {};
   let from = 0;
   // Skip the cover and the contents pages.
   const tocEnd = pages.findIndex((p, i) => i > 0 && !/Contents/.test(p) && /\S/.test(p));
@@ -746,7 +822,7 @@ function chapterPages(pdfFile, chapters) {
   for (const [n, ch] of chapters.entries()) {
     const num = String(n + 1).padStart(2, "0");
     for (let p = from; p < pages.length; p++) {
-      const hit = pages[p].split("\n").some((l) => l.trim().replace(/\s+/g, " ") === `${num} ${ch.title}`);
+      const hit = (pages[p] ?? "").split("\n").some((l) => l.trim().replace(/\s+/g, " ") === `${num} ${ch.title}`);
       if (hit) {
         found[ch.id] = p + 1;
         from = p;
@@ -754,32 +830,32 @@ function chapterPages(pdfFile, chapters) {
       }
     }
   }
-  return { found, count: pages.filter((p) => p.trim() || true).length - (pages[pages.length - 1].trim() ? 0 : 1) };
+  return { found, count: pages.filter((p) => p.trim() || true).length - ((pages[pages.length - 1] ?? "").trim() ? 0 : 1) };
 }
 
 // ---------------------------------------------------------------- main
 
 // The PDF's page footer names the product.
-function printFooter() {
+function printFooter(): string {
   return `@media print{@page{@bottom-left{content:${JSON.stringify(`${CONFIG.product} handbook`)};font:8pt "JetBrains Mono",monospace;color:#777}}}`;
 }
 
 // Reads the plug-in's version where its release tooling keeps it.
-function readVersion() {
+function readVersion(): string {
   const v = CONFIG.version;
   const text = read(v.file);
   if (v.json) {
-    const value = v.json.split(".").reduce((o, k) => (o == null ? o : o[k]), JSON.parse(text));
+    const value: unknown = v.json.split(".").reduce<unknown>((o, k) => (o == null || typeof o !== "object" ? undefined : (o as Record<string, unknown>)[k]), JSON.parse(text));
     if (typeof value !== "string") throw new Error(`${v.file}: no version at ${v.json}`);
     return value;
   }
-  const m = new RegExp(v.pattern).exec(text);
-  if (!m) throw new Error(`${v.file}: no version matching ${v.pattern}`);
+  const m = new RegExp(v.pattern ?? "").exec(text);
+  if (!m?.[1]) throw new Error(`${v.file}: no version matching ${v.pattern}`);
   return m[1];
 }
 
-function build(opts) {
-  ({ root: ROOT, config: CONFIG } = loadConfig(opts.config, opts.cwd));
+function build(input: BuildOptions): BuildResult {
+  ({ root: ROOT, config: CONFIG } = loadConfig(input.config, input.cwd));
   REPO_URL = `https://github.com/${CONFIG.repository}`;
   GITHUB_REF = process.env.HANDBOOK_GITHUB_REF || "main";
   BLOB = `${REPO_URL}/blob/${GITHUB_REF}/`;
@@ -787,12 +863,12 @@ function build(opts) {
   CHAPTERS = CONFIG.chapters;
   FILE_NAMES = CONFIG.fileNames;
   MEDIA = CONFIG.media;
-  opts = { ...opts, out: opts.out || path.join(ROOT, "build", "handbook") };
+  const opts = { ...input, pdf: input.pdf !== false, out: input.out || path.join(ROOT, "build", "handbook") };
   const version = readVersion();
   const when = process.env.HANDBOOK_DATE ? new Date(process.env.HANDBOOK_DATE) : new Date();
   const docs = loadDocs();
   const { chapters, anchors, fileHome } = assemble(docs);
-  const meta = {
+  const meta: Meta = {
     version,
     date: formatDate(when),
     commit: gitInfo(),
@@ -823,7 +899,7 @@ function build(opts) {
   check(web, opts.out, "index.html", problems, opts.pdf ? [meta.pdfName] : []);
   check(single, opts.out, meta.htmlName, problems);
   if (/\s(?:src)="(?!data:|https:)/.test(single)) problems.push(`${meta.htmlName}: a picture is not embedded`);
-  const result = { out: opts.out, version: meta.version, pages: null, pdf: null, problems: [...new Set(problems)] };
+  const result: BuildResult = { out: opts.out, version: meta.version, pages: null, pdf: null, problems: [...new Set(problems)] };
   if (result.problems.length) return result;
 
   if (opts.pdf) {
@@ -859,7 +935,7 @@ function build(opts) {
   return result;
 }
 
-function main(argv) {
+function main(argv: string[]): number {
   const opts = parseArgs(argv);
   const r = build(opts);
   if (r.problems.length) {
@@ -873,4 +949,4 @@ function main(argv) {
   return 0;
 }
 
-module.exports = { build, main };
+export { build, main };

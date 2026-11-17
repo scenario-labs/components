@@ -21,7 +21,7 @@ body:
     attributes:
       label: Part
       options:
-        - Handbook builder (plugin-site handbook)
+        - Handbook builder (components handbook)
         - Site action (action.yml)
         - Configuration (handbook.config.json)
         - Documentation

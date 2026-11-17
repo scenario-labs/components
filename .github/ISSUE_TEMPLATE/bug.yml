@@ -21,7 +21,7 @@ body:
     attributes:
       label: Part
       options:
-        - Handbook builder (plugin-site handbook)
+        - Handbook builder (components handbook)
         - Site action (action.yml)
         - Configuration (handbook.config.json)
         - Documentation
@@ -40,7 +40,7 @@ body:
     id: repro
     attributes:
       label: Steps to reproduce
-      description: The command or the workflow run, and the plugin-site version (tag or commit) it used.
+      description: The command or the workflow run, and the components version (tag or commit) it used.
     validations:
       required: true
   - type: textarea

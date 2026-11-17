@@ -1,10 +1,7 @@
-"use strict";
-// What the handbook adds to the components-lib look: pictures that enlarge,
-// rows of screenshots, check labels, the before and after gallery, the
-// lightbox, and the A4 print sheet (cover, contents with page numbers).
-// Light only, on the look's tokens.
-
-const CSS = String.raw`
+/* What the handbook adds to the components-lib look: pictures that enlarge,
+   rows of screenshots, check labels, the before and after gallery, the
+   lightbox, and the A4 print sheet (cover, contents with page numbers).
+   Light only, on the look's tokens. */
 .skip{position:absolute;left:-10000px;top:8px}
 .skip:focus{left:12px;z-index:50;background:var(--bg);padding:.5rem .8rem;border:1px solid var(--line)}
 .print-only{display:none}
@@ -121,6 +118,3 @@ td img,th img{max-width:100%;height:auto}
   figcaption{font-size:8.4pt}
   em.claim{font-size:7.4pt}
 }
-`;
-
-module.exports = { CSS };

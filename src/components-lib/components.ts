@@ -1,45 +1,62 @@
-"use strict";
 // components-lib: the pieces of a Scenario plug-in site, with the markup
 // photoshop.scenario.com uses, as functions that return HTML strings. The
-// look is look.css, the behaviour client.js (a browser script, CLIENT). Text
+// look is look.css, the behaviour client.ts (a browser script, CLIENT). Text
 // arguments are plain text and are escaped here; arguments named html are
 // trusted, already escaped HTML.
 
-const fs = require("node:fs");
-const path = require("node:path");
+import fs from "node:fs";
+import path from "node:path";
+import { transformSync } from "esbuild";
 
-function esc(s) {
-  return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+function esc(s: unknown): string {
+  return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
 }
 
-const LOOK = fs.readFileSync(path.join(__dirname, "look.css"), "utf8");
-// client.js, inlined into a page so it works offline (a single-file handbook).
-const CLIENT = fs.readFileSync(path.join(__dirname, "client.js"), "utf8");
+const LOOK = fs.readFileSync(path.join(import.meta.dirname, "look.css"), "utf8");
+// client.ts with its types stripped, inlined as a module script so the page
+// works offline (a single-file handbook).
+const CLIENT = transformSync(fs.readFileSync(path.join(import.meta.dirname, "client.ts"), "utf8"), { loader: "ts", format: "esm", target: "es2022" }).code;
 const FONTS =
   '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' +
   '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap">';
 
 // The plug-in's colour: {chip, chipInk, chipSoft, chipLine}, any of them.
-function theme(t) {
+export interface Theme {
+  chip?: string;
+  chipInk?: string;
+  chipSoft?: string;
+  chipLine?: string;
+}
+function theme(t: Theme | null | undefined): string {
   if (!t) return "";
-  const vars = [["chip", "--chip"], ["chipInk", "--chip-ink"], ["chipSoft", "--chip-soft"], ["chipLine", "--chip-line"]]
+  const vars = ([["chip", "--chip"], ["chipInk", "--chip-ink"], ["chipSoft", "--chip-soft"], ["chipLine", "--chip-line"]] as [keyof Theme, string][])
     .filter(([k]) => t[k])
     .map(([k, v]) => `${v}:${t[k]}`);
   return vars.length ? `:root{${vars.join(";")}}` : "";
 }
 
 // The Scenario wordmark, once per page, used by header() and footer().
-function logoSymbol() {
-  const svg = fs.readFileSync(path.join(__dirname, "..", "handbook", "scenario-logo.svg"), "utf8").replace(/<!--[\s\S]*?-->\s*/, "");
-  const viewBox = (/viewBox="([^"]+)"/.exec(svg) || [, "0 0 1024 252"])[1];
+function logoSymbol(): string {
+  const svg = fs.readFileSync(path.join(import.meta.dirname, "..", "handbook", "scenario-logo.svg"), "utf8").replace(/<!--[\s\S]*?-->\s*/, "");
+  const viewBox = /viewBox="([^"]+)"/.exec(svg)?.[1] ?? "0 0 1024 252";
   const inner = svg.replace(/^[\s\S]*?<svg[^>]*>/, "").replace(/<\/svg>\s*$/, "");
   return `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="logo" viewBox="${viewBox}">${inner}</symbol></svg>`;
 }
-const wordmark = () => '<svg class="wordmark" viewBox="0 0 1024 252" role="img" aria-label="Scenario"><use href="#logo"></use></svg>';
+const wordmark = (): string => '<svg class="wordmark" viewBox="0 0 1024 252" role="img" aria-label="Scenario"><use href="#logo"></use></svg>';
 
 // The sticky top bar: wordmark, the plug-in's name chip and version, search,
 // links ([text, href, optional]) and App Login.
-function header({ product, chip, version, links = [], appUrl = "https://app.scenario.com", search = true }) {
+/** A top-bar link: [text, href, shown only on wide screens]. */
+export type NavLink = [string, string, boolean?];
+export interface HeaderOptions {
+  product: string;
+  chip: string;
+  version?: string;
+  links?: NavLink[];
+  appUrl?: string;
+  search?: boolean;
+}
+function header({ product, chip, version, links = [], appUrl = "https://app.scenario.com", search = true }: HeaderOptions): string {
   return `<header class="site-header">
   <div class="bar">
     <a class="brand" href="#top" aria-label="${esc(product)}, top of the page">${wordmark()}<span class="chip product">${esc(chip)}</span>${version ? `<span class="chip version" title="Version">${esc(version)}</span>` : ""}</a>
@@ -63,26 +80,34 @@ function header({ product, chip, version, links = [], appUrl = "https://app.scen
 
 // The contents rail: every entry open. items: {id, title, subs: [{id, title}]}
 // or {group: "Eight steps"} for a group label.
-function toc(items) {
-  const li = (t) =>
-    t.group
+export type TocItem = { group: string } | { id: string; title: string; subs?: { id: string; title: string }[] };
+function toc(items: TocItem[]): string {
+  const li = (t: TocItem): string =>
+    "group" in t
       ? `<li><span class="grp">${esc(t.group)}</span></li>`
       : `<li><a href="#${esc(t.id)}">${esc(t.title)}</a>${t.subs && t.subs.length ? `<ul>${t.subs.map((s) => `<li><a href="#${esc(s.id)}">${esc(s.title)}</a></li>`).join("")}</ul>` : ""}</li>`;
   return `<nav class="toc" aria-label="Contents" id="toc"><details open><summary class="eyebrow">Contents</summary><ul>${items.map(li).join("")}</ul></details></nav>`;
 }
 
 // The serif title, with an optional italic part: "Scenario for Maya: user guide".
-function title(text, accent) {
+function title(text: string, accent?: string): string {
   return `<h1>${esc(text)}${accent ? `: <span class="it">${esc(accent)}</span>` : ""}</h1>`;
 }
 
 // Page buttons: the first filled, the others outlined. buttons: [[text, href]].
-function cta(buttons) {
+function cta(buttons: [string, string][]): string {
   return `<div class="cta">${buttons.map(([t, href], k) => `<a class="${k ? "btn-pill" : "btn-go"}" href="${esc(href)}">${esc(t)}</a>`).join("")}</div>`;
 }
 
 // A film with its poster and a play button; plays in place.
-function film({ src, poster, tag = "Film", label, caption }) {
+export interface FilmOptions {
+  src: string;
+  poster?: string;
+  tag?: string;
+  label?: string;
+  caption?: string;
+}
+function film({ src, poster, tag = "Film", label, caption }: FilmOptions): string {
   return `<figure>
   <div class="film" id="film" data-state="poster">
     <video id="film-v" src="${esc(src)}"${poster ? ` poster="${esc(poster)}"` : ""} preload="none" playsinline aria-label="${esc(label || caption || tag)}"></video>
@@ -95,12 +120,21 @@ function film({ src, poster, tag = "Film", label, caption }) {
 }
 
 // A note: one mono label, one or two sentences of HTML.
-function note(label, html, kind) {
+function note(label: string, html: string, kind?: string): string {
   return `<div class="note${kind ? ` ${kind}` : ""}"><span class="nk">${esc(label)}</span>${html}</div>`;
 }
 
 // The hero: eyebrow, title, lede (HTML), buttons, then media (HTML) and a note (HTML).
-function hero({ eyebrow, heading, accent, ledeHtml, buttons = [], mediaHtml = "", noteHtml = "" }) {
+export interface HeroOptions {
+  eyebrow?: string;
+  heading: string;
+  accent?: string;
+  ledeHtml?: string;
+  buttons?: [string, string][];
+  mediaHtml?: string;
+  noteHtml?: string;
+}
+function hero({ eyebrow, heading, accent, ledeHtml, buttons = [], mediaHtml = "", noteHtml = "" }: HeroOptions): string {
   return `<div class="hero" id="top" data-toc="Overview">
   ${eyebrow ? `<p class="eyebrow">${esc(eyebrow)}</p>` : ""}
   ${title(heading, accent)}
@@ -113,8 +147,18 @@ function hero({ eyebrow, heading, accent, ledeHtml, buttons = [], mediaHtml = ""
 
 // "How it works": what goes in, the actions in the middle (with the price
 // button), what comes back. Items are [text, href]; foot is [[label, html]].
-function flow({ label, from, actions, to, foot = [] }) {
-  const items = (list) => list.map(([t, href]) => `<li>${href ? `<a href="${esc(href)}">${esc(t)}</a>` : esc(t)}</li>`).join("");
+/** A flow item: [text, href]. */
+export type FlowItem = [string, string?];
+export interface FlowOptions {
+  label?: string;
+  from: { label: string; items: FlowItem[] };
+  actions: { label: string; items: FlowItem[]; more?: string; button?: string; note?: string };
+  to: { label: string; items: FlowItem[] };
+  /** [label, html] lines under the diagram. */
+  foot?: [string, string][];
+}
+function flow({ label, from, actions, to, foot = [] }: FlowOptions): string {
+  const items = (list: FlowItem[]): string => list.map(([t, href]) => `<li>${href ? `<a href="${esc(href)}">${esc(t)}</a>` : esc(t)}</li>`).join("");
   return `<div class="flow" role="group" aria-label="${esc(label || "How it works")}">
   <div><p class="fh">${esc(from.label)}</p><ul>${items(from.items)}</ul></div>
   <div class="arr" aria-hidden="true"></div>
@@ -126,8 +170,15 @@ function flow({ label, from, actions, to, foot = [] }) {
 }
 
 // Drag to compare two pictures of the same size. a and b: {src, alt, label, w, h}.
-function wipe(a, b, captionHtml) {
-  const img = (p, cls) => `<img${cls ? ` class="${cls}"` : ""} src="${esc(p.src)}" alt="${esc(p.alt)}" loading="lazy"${p.w ? ` width="${p.w}" height="${p.h}"` : ""}>`;
+export interface WipeSide {
+  src: string;
+  alt: string;
+  label?: string;
+  w?: number;
+  h?: number;
+}
+function wipe(a: WipeSide, b: WipeSide, captionHtml?: string): string {
+  const img = (p: WipeSide, cls?: string): string => `<img${cls ? ` class="${cls}"` : ""} src="${esc(p.src)}" alt="${esc(p.alt)}" loading="lazy"${p.w ? ` width="${p.w}" height="${p.h}"` : ""}>`;
   return `<figure class="fig">
   <div class="wipe" style="--cut:50%">
     ${img(a)}${img(b, "over")}
@@ -140,22 +191,37 @@ function wipe(a, b, captionHtml) {
 }
 
 // Step cards linking to sections: [{href, src, title, sub, n, fit}].
-function steps(cards) {
+export interface StepCard {
+  href: string;
+  src?: string;
+  title: string;
+  sub?: string;
+  n?: string | number;
+  fit?: boolean;
+}
+function steps(cards: StepCard[]): string {
   return `<div class="steps8">${cards
     .map(
-      (c, k) =>
+      (c: StepCard, k: number) =>
         `<a class="step" href="${esc(c.href)}"><span class="ph${c.fit ? " fit" : ""}">${c.src ? `<img src="${esc(c.src)}" alt="" loading="lazy">` : ""}</span><span class="tx"><b><span>${esc(c.n || k + 1)}</span>${esc(c.title)}</b>${c.sub ? `<small>${esc(c.sub)}</small>` : ""}</span></a>`,
     )
     .join("")}</div>`;
 }
 
 // A part divider: a mono label and an italic line, before a run of sections.
-function part(label, line) {
+function part(label: string, line?: string): string {
   return `<div class="part"><span>${esc(label)}</span>${line ? `<em>${esc(line)}</em>` : ""}</div>`;
 }
 
 // A section with its serif h2; bodyHtml is the section's content.
-function section({ id, heading, whatHtml, bodyHtml, cls }) {
+export interface SectionOptions {
+  id: string;
+  heading: string;
+  whatHtml?: string;
+  bodyHtml: string;
+  cls?: string;
+}
+function section({ id, heading, whatHtml, bodyHtml, cls }: SectionOptions): string {
   return `<section id="${esc(id)}"${cls ? ` class="${cls}"` : ""}>
 <h2>${esc(heading)}</h2>
 ${whatHtml ? `<p class="what">${whatHtml}</p>` : ""}
@@ -164,8 +230,8 @@ ${bodyHtml}
 }
 
 // The footer: wordmark, links [text, href], and a line on the right (HTML).
-function footer(links, legalHtml) {
+function footer(links: [string, string][], legalHtml?: string): string {
   return `<footer class="site-footer"><div class="bar">${wordmark()}${links.map(([t, href]) => `<a href="${esc(href)}">${esc(t)}</a>`).join("")}${legalHtml ? `<span class="legal">${legalHtml}</span>` : ""}</div></footer>`;
 }
 
-module.exports = { esc, LOOK, CLIENT, FONTS, theme, logoSymbol, wordmark, header, toc, title, cta, film, note, hero, flow, wipe, steps, part, section, footer };
+export { esc, LOOK, CLIENT, FONTS, theme, logoSymbol, wordmark, header, toc, title, cta, film, note, hero, flow, wipe, steps, part, section, footer };

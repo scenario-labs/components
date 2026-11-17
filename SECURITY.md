@@ -8,12 +8,12 @@ copies may remain accessible after deletion.
 
 Report privately through any of these channels:
 
-- [Open a private vulnerability report](https://github.com/scenario-labs/plugin-site/security/advisories/new)
+- [Open a private vulnerability report](https://github.com/scenario-labs/components/security/advisories/new)
   from this repository's Security tab.
 - Email [support@scenario.com](mailto:support@scenario.com) with "security" in the subject.
 - Use in-app support at [app.scenario.com](https://app.scenario.com).
 
-Include the plugin-site version (tag or commit), the plug-in whose site is
+Include the components version (tag or commit), the plug-in whose site is
 affected, reproduction steps and the impact you observe.
 
 ## Scope
@@ -35,5 +35,5 @@ channels above.
 
 ## Supported versions
 
-Security fixes target the [latest release](https://github.com/scenario-labs/plugin-site/releases).
+Security fixes target the [latest release](https://github.com/scenario-labs/components/releases).
 Older releases have no support branch.

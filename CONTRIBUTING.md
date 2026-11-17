@@ -1,4 +1,4 @@
-# Contributing to plugin-site
+# Contributing to components
 
 Thanks for helping. This guide covers what a pull request needs; the commands,
 rules and code map live in [AGENTS.md](AGENTS.md), which humans and coding
@@ -7,7 +7,7 @@ agents both follow.
 ## Before you start
 
 - For anything larger than a small fix, open a change request first
-  ([issue chooser](https://github.com/scenario-labs/plugin-site/issues/new/choose))
+  ([issue chooser](https://github.com/scenario-labs/components/issues/new/choose))
   so the approach can be agreed before you write it.
 - Every Scenario plug-in's site runs this code. A change to the configuration,
   the command line or the action's inputs must keep the existing plug-ins

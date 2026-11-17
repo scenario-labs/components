@@ -22,7 +22,7 @@ Show a visible change to the handbook with screenshots, before/after.
 ## Validation
 
 - [ ] `pnpm test` (or `node --test test/*.test.js`) and `pnpm lint` pass.
-- [ ] The handbook of at least one real plug-in was built with this change (`plugin-site handbook` in its checkout) and looked at in a browser; the plug-in and the result are listed below.
+- [ ] The handbook of at least one real plug-in was built with this change (`components handbook` in its checkout) and looked at in a browser; the plug-in and the result are listed below.
 - [ ] Changes to `action.yml`: a plug-in's Pages workflow ran with this commit pinned, or the change is covered by the tests.
 
 Commands and results:

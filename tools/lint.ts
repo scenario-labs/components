@@ -1,26 +1,26 @@
-#!/usr/bin/env node
-"use strict";
 // Repository checks, as the plug-in repositories run them: no em dashes, no
 // machine paths, no email address but support@scenario.com, JSON that parses,
-// JavaScript that compiles, and every action pinned to a full commit SHA with
-// its version in a comment.
+// TypeScript only (JavaScript is the CLI shim alone; `pnpm typecheck` checks
+// the types), and every action pinned to a full commit SHA with its version
+// in a comment.
 //
-//   pnpm lint    (node tools/lint.js)
+//   pnpm lint    (node --import tsx tools/lint.ts)
 
-const fs = require("node:fs");
-const path = require("node:path");
-const { spawnSync } = require("node:child_process");
+import fs from "node:fs";
+import path from "node:path";
 
-const ROOT = path.resolve(__dirname, "..");
+const ROOT = path.resolve(import.meta.dirname, "..");
 const EM_DASH = String.fromCharCode(0x2014);
 const SKIP = new Set([".git", "node_modules", "build", "dist", ".agent_out"]);
-const TEXT = /\.(js|mjs|json|md|yml|yaml|txt|svg|html|css)$|^(LICENSE|\.editorconfig|\.gitignore|\.lycheeignore|\.nvmrc|CODEOWNERS)$/;
+const TEXT = /\.(ts|tsx|js|mjs|cjs|json|md|yml|yaml|txt|svg|html|css)$|^(LICENSE|\.editorconfig|\.gitignore|\.lycheeignore|\.nvmrc|CODEOWNERS)$/;
 // Files that are not this repository's prose: lockfiles, and the skills
 // shared by every Scenario repository (changed upstream, skills-lock.json).
 const NOT_OURS = [/^pnpm-lock\.yaml$/, /^\.agents\/skills\//];
+// The only JavaScript: the CLI entry, which registers tsx (bin/components.mjs says why).
+const JAVASCRIPT_ALLOWED = new Set(["bin/components.mjs"]);
 
-function files(dir = ROOT) {
-  const out = [];
+function files(dir = ROOT): string[] {
+  const out: string[] = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (SKIP.has(entry.name)) continue;
     const full = path.join(dir, entry.name);
@@ -57,13 +57,10 @@ function main() {
       try {
         JSON.parse(text);
       } catch (error) {
-        problems.push(`${rel}: JSON does not parse (${error.message})`);
+        problems.push(`${rel}: JSON does not parse (${(error as Error).message})`);
       }
     }
-    if (/\.(js|mjs)$/.test(rel)) {
-      const r = spawnSync(process.execPath, ["--check", file], { encoding: "utf8" });
-      if (r.status !== 0) problems.push(`${rel}: ${r.stderr.trim().split("\n").slice(-1)[0]}`);
-    }
+    if (/\.(js|mjs|cjs)$/.test(rel) && !JAVASCRIPT_ALLOWED.has(rel)) problems.push(`${rel}: JavaScript; write it in TypeScript`);
   }
   for (const p of problems) process.stderr.write(`${p}\n`);
   process.stdout.write(`lint: ${problems.length} problem(s)\n`);
