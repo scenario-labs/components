@@ -1,8 +1,8 @@
 <!--
 The PR title becomes the squash commit header: type(scope): summary.
 Use an imperative summary, no trailing period, and at most 120 characters.
-Scopes: handbook, action, cli, tests, tools, docs, ci, deps, release, agents,
-repo (see commitlint.config.mjs).
+Scopes: handbook, og, mcp, action, cli, tests, tools, docs, ci, deps, release,
+agents, repo (see commitlint.config.ts).
 Example: fix(handbook): keep a picture's width from its img tag
 
 Keep one concern per PR and the description short. Tick only checks you did;

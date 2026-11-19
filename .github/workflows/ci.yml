@@ -133,6 +133,32 @@ jobs:
           (cd "$SITE/download" && sha256sum -c SHA256SUMS)
           test "$(jq -r .version "$SITE/download/latest.json")" = 1.2.3
 
+  # mcp-check/action.yml on the fixtures: a server that keeps the rules
+  # passes, a broken one fails the step.
+  mcp-check:
+    name: mcp-check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - uses: ./mcp-check
+        with:
+          snapshot: test/fixtures/mcp/server.json
+      - id: broken
+        uses: ./mcp-check
+        continue-on-error: true
+        with:
+          snapshot: test/fixtures/mcp/broken.json
+      - name: The broken server failed the check
+        env:
+          OUTCOME: ${{ steps.broken.outcome }}
+        run: test "$OUTCOME" = failure
+
   agents:
     name: agents
     runs-on: ubuntu-24.04
@@ -158,7 +184,7 @@ jobs:
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [lint, test, browser, action, agents]
+    needs: [lint, test, browser, action, mcp-check, agents]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
