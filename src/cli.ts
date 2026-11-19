@@ -3,16 +3,19 @@
 //   components handbook [--config handbook.config.json] [--out <dir>] [--no-pdf] [--no-og] [--quiet]
 //   components paths [--config handbook.config.json]
 //   components og --title <title> [--subtitle <line>] [--image <file or address>] --out og.png
+//   components mcp-check <snapshot.json>
 //
 // Run from the plug-in repository (or pass --config with its path). `paths`
 // prints, one per line, the paths the handbook is built from, relative to
-// where it runs.
+// where it runs. `mcp-check` checks a snapshot of a plug-in's local MCP
+// server (src/mcp/check.ts).
 
 import path from "node:path";
 
 const USAGE = `usage: components handbook [--config handbook.config.json] [--out <dir>] [--no-pdf] [--no-og] [--quiet]
        components paths [--config handbook.config.json]
        components og --title <title> [--subtitle <line>] [--image <file or address>] --out og.png
+       components mcp-check <snapshot.json>
 `;
 
 async function paths(argv: string[]): Promise<number> {
@@ -31,6 +34,7 @@ const COMMANDS: Record<string, (argv: string[]) => Promise<number> | number> = {
   handbook: async (argv) => (await import("./handbook/build.ts")).main(argv),
   paths,
   og: async (argv) => (await import("./og/index.ts")).main(argv),
+  "mcp-check": async (argv) => (await import("./mcp/check.ts")).main(argv),
 };
 
 /** Runs a command and returns its exit code. */

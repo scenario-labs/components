@@ -5,13 +5,16 @@ Root `AGENTS.md` is the repository rulebook; `.claude/CLAUDE.md` links here.
 
 ## What this repository is
 
-The site tooling the Scenario plug-ins share, so each plug-in repository keeps
+The tooling the Scenario plug-ins share, so each plug-in repository keeps
 only its docs and a small configuration:
 
 - the handbook builder: a plug-in's Markdown docs to one searchable page, a
   single-file HTML handbook and an A4 PDF (`components handbook`);
 - `action.yml`: the composite action a plug-in's Pages workflow runs to build
   its site from its newest release and add the checked release package.
+- `mcp-check`: the checks of a plug-in's local MCP server, scenario-mcp's
+  rules applied to a committed snapshot of its tools (`components mcp-check`,
+  `mcp-check/action.yml`).
 
 Plug-ins pin a release of this repository (a tag or its commit SHA). It is
 TypeScript, run by tsx on Node 24 with no build step: a plug-in runs it with
@@ -25,7 +28,8 @@ scenario-com-landing-page's `BrandFrame` and its helpers, copied.
   JavaScript: it registers tsx and runs `src/cli.ts` (Node will not strip
   types under `node_modules`, where npx installs the package, nor compile JSX).
 - `src/cli.ts`: the commands: `handbook` (build), `paths` (the repository
-  paths a handbook is built from, for the action) and `og` (a card).
+  paths a handbook is built from, for the action), `og` (a card) and
+  `mcp-check`.
 - `src/handbook/`:
   - `config.ts`: reads and checks `handbook.config.json`, fills the defaults,
     lists the doc paths; the `Config` type.
@@ -48,6 +52,8 @@ scenario-com-landing-page's `BrandFrame` and its helpers, copied.
   command), `fonts/` (OFL).
 - `action.yml`: release lookup, docs restored from the release's commit,
   handbook build, release package with its checksum and attestation.
+- `src/mcp/check.ts`: the MCP rules, with their limits taken from
+  scenario-mcp; `mcp-check/action.yml` runs them in a plug-in's CI.
 - `tools/lint.ts`: repository checks (below).
 - `test/`: `node:test` suites against `test/fixtures/sample-plugin/`, a small
   plug-in whose docs cover what the real ones use; `browser.test.ts` drives
@@ -72,7 +78,7 @@ numbers, Poppler's `pdftotext`; the tests build without it.
 
 | Workflow | When | What |
 | --- | --- | --- |
-| `ci.yml` | pull requests, `main` | `lint` (with `tsc`), `test` (Linux, macOS, Windows), `browser` (the page in Chromium, the PDF), `action` (`action.yml` before and after a release, stand-in `gh`), `agents` (shared skills valid and linked); `ci-ok` requires them all |
+| `ci.yml` | pull requests, `main` | `lint` (with `tsc`), `test` (Linux, macOS, Windows), `browser` (the page in Chromium, the PDF), `action` (`action.yml` before and after a release, stand-in `gh`), `mcp-check` (its action on the fixtures), `agents` (shared skills valid and linked); `ci-ok` requires them all |
 | `pr-name.yml`, `commitlint.yml` | pull requests | `pr-title` and `commits` against `commitlint.config.ts` |
 | `links.yml` | pull requests changing Markdown, weekly | links in the docs |
 | `scorecard.yml` | weekly, `main` | OpenSSF Scorecard |
@@ -82,7 +88,9 @@ numbers, Poppler's `pdftotext`; the tests build without it.
 ## Rules
 
 - Every plug-in's site runs this code: a change to the configuration keys,
-  the CLI or the action's inputs is a breaking change for them. Add a key with
+  the CLI or the actions' inputs is a breaking change for them. A stricter
+  MCP rule fails every plug-in that pins the new release until it complies:
+  say so in the PR. Add a key with
   a default rather than renaming one, and say in the PR which plug-ins must
   bump their pin or change their configuration.
 - The builder keeps the plug-ins' public-content rules on every page it

@@ -45,7 +45,7 @@ function main() {
         const email = m[0].toLowerCase();
         if (!["support@scenario.com", "noreply@anthropic.com", "noreply@openai.com"].includes(email) && !email.endsWith("@noreply.github.com")) problems.push(`${at}: email address ${m[0]}`);
       }
-      if (/^\.github\/workflows\/.*\.ya?ml$/.test(rel) || rel === "action.yml") {
+      if (/^\.github\/workflows\/.*\.ya?ml$/.test(rel) || /(^|\/)action\.yml$/.test(rel)) {
         const use = /^\s*(?:-\s*)?uses:\s*([^\s#]+)(.*)$/.exec(line);
         if (use && !use[1].startsWith("./")) {
           if (!/@[0-9a-f]{40}$/.test(use[1])) problems.push(`${at}: ${use[1]} is not pinned to a full commit SHA`);

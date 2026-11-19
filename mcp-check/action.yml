@@ -1,0 +1,30 @@
+name: Scenario plug-in MCP check
+description: >-
+  Checks a Scenario plug-in's local MCP server against the rules scenario-mcp
+  applies to its own tools: descriptions and instructions inside Claude
+  Code's cut, a Returns line, a title and all four hints on every tool, small
+  input schemas, and a catalog past 30 listed tools. Reads the snapshot of
+  the server's tools that the plug-in's tests keep up to date, so it runs
+  whatever language the plug-in is written in.
+
+inputs:
+  snapshot:
+    description: >-
+      The snapshot, relative to the repository root:
+      {"instructions"?: string, "tools": [...]}, every tool as tools/list sends it.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Install the dependencies of components
+      shell: bash
+      working-directory: ${{ github.action_path }}/..
+      run: npx --yes pnpm@12.10.1 install --prod --frozen-lockfile
+
+    - name: Check the MCP server
+      shell: bash
+      env:
+        SNAPSHOT: ${{ inputs.snapshot }}
+        TOOL: ${{ github.action_path }}/../bin/components.mjs
+      run: node "$TOOL" mcp-check "$SNAPSHOT"

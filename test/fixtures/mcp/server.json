@@ -1,0 +1,234 @@
+{
+  "instructions": "Demo plug-in: generate with Scenario models and place the results in the scene. Scene tools are in the catalog: demo_tools_search, then demo_tool_execute_<read|write|delete>.",
+  "tools": [
+    {
+      "name": "demo_status",
+      "title": "Status",
+      "description": "Who is signed in and the project that receives generations. Does not change anything; use demo_generate to create.\nReturns: the account, the project and the spending limits.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "demo_generate",
+      "title": "Generate",
+      "description": "Generates an image with a Scenario model and imports it. Paid: check the price with the model's estimate first. Does not edit existing assets; use demo_object_set for that.\nReturns: the asset path and the job id.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "model_id": {
+            "type": "string",
+            "description": "The Scenario model, such as model_example."
+          },
+          "prompt": {
+            "type": "string",
+            "description": "What to generate."
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "demo_tools_list",
+      "title": "List tools",
+      "description": "Lists the tools served through the catalog, by group.\nReturns: each tool's name, title and one-line summary.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "demo_tools_search",
+      "title": "Search tools",
+      "description": "Finds catalog tools by words in their name or description.\nReturns: the matching tools with their input schemas.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Words to match."
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "demo_tool_execute_read",
+      "title": "Run a read tool",
+      "description": "Runs a read-only catalog tool. Use demo_tool_execute_write for one that changes the scene.\nReturns: the tool's own result.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The catalog tool's name."
+          },
+          "arguments": {
+            "type": "object",
+            "description": "Its arguments."
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "demo_tool_execute_write",
+      "title": "Run a write tool",
+      "description": "Runs a catalog tool that changes the scene but deletes nothing. Use demo_tool_execute_delete for one that deletes.\nReturns: the tool's own result.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The catalog tool's name."
+          },
+          "arguments": {
+            "type": "object",
+            "description": "Its arguments."
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "demo_tool_execute_delete",
+      "title": "Run a delete tool",
+      "description": "Runs a catalog tool that deletes.\nReturns: the tool's own result.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The catalog tool's name."
+          },
+          "arguments": {
+            "type": "object",
+            "description": "Its arguments."
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "demo_object_get",
+      "title": "Get an object",
+      "description": "One scene object with its transform and components.\nReturns: the object's path, transform and components.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The object's hierarchy path."
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "scenario.com/listing": "catalog"
+      }
+    },
+    {
+      "name": "demo_object_set",
+      "title": "Change an object",
+      "description": "Changes an object's name, parent or transform.\nReturns: the object's path and new transform.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The object's hierarchy path."
+          },
+          "position": {
+            "type": "array",
+            "description": "[x, y, z] in meters."
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "scenario.com/listing": "catalog"
+      }
+    },
+    {
+      "name": "demo_object_delete",
+      "title": "Delete an object",
+      "description": "Deletes a scene object, as one Undo step.\nReturns: the deleted object's path.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The object's hierarchy path."
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "scenario.com/listing": "catalog"
+      }
+    }
+  ]
+}

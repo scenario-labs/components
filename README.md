@@ -1,6 +1,6 @@
 # components
 
-The site tooling the Scenario plug-ins share. Each plug-in keeps its docs and a
+The tooling the Scenario plug-ins share. Each plug-in keeps its docs and a
 `handbook.config.json`; this repository turns them into its handbook and
 publishes its site.
 
@@ -17,6 +17,9 @@ publishes its site.
   release, so the site never describes what people cannot download yet, and
   serves the release package under `download/` once its checksum and build
   provenance verify.
+- **mcp-check**: checks a plug-in's local MCP server against the rules
+  scenario-mcp applies to its own tools, whatever language the plug-in is
+  written in (below).
 
 The content stays in each plug-in's repository: change the docs there, not
 here.
@@ -203,6 +206,39 @@ version of the landing page's files, copy them again and keep the changes
 their headers list.
 tsx, satori, resvg, sharp and React are the runtime dependencies; the action
 installs them from the lockfile.
+
+## mcp-check
+
+A plug-in with a local MCP server commits a snapshot of it and checks it in
+CI. The snapshot is the server's own wire format, so the plug-in's language
+does not matter: `{"instructions"?: string, "tools": [...]}`, the initialize
+result's instructions and every tool as `tools/list` sends it. A tool served
+only through the catalog stays in it with scenario-mcp's marker,
+`_meta: {"scenario.com/listing": "catalog"}`. The plug-in's own tests write the
+snapshot from the running server and fail when the committed one differs, so
+it cannot go stale.
+
+```yaml
+- uses: scenario-labs/components/mcp-check@<commit SHA> # vX.Y.Z
+  with:
+    snapshot: tests/mcp/tools.json
+```
+
+Or `components mcp-check tests/mcp/tools.json`. It prints each problem and the
+sizes worth watching, and fails on any problem:
+
+| Rule | Why |
+| --- | --- |
+| Each description and the instructions at most 2,048 characters | Claude Code drops the rest |
+| A `Returns:` line in each description | Claude Code shows the model no output schema |
+| No `Args:` block; every parameter described in `inputSchema`, in snake_case | where hosts look for it |
+| `inputSchema` at most 4,500 B, each description in it at most 1,024 characters | Codex drops property descriptions past 5,000 B |
+| A title and `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint` on every tool, never read-only and destructive at once | hosts decide what to auto-approve from them; the Anthropic Directory requires them |
+| Names at most 64 characters, each listed once | the Anthropic Directory's limit |
+| At most 30 listed tools besides the catalog's; the rest catalog-only, behind `<prefix>_tools_list`, `<prefix>_tools_search` and the `<prefix>_tool_execute_<read\|write\|delete>` lane their hints call for | every listed tool costs context on every turn |
+
+The limits are scenario-mcp's (`lib/tools/registry/description-budget.test.ts`
+and the default `tools/list`, #197 and #469 there): change them there first.
 
 ## Versions
 
