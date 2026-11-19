@@ -30,6 +30,10 @@ const LISTING = "scenario.com/listing";
 // (scenario_tools_list, scenario_tool_execute_read, ...).
 const CATALOG = { list: /^(\w+)_tools_list$/, search: /^(\w+)_tools_search$/ };
 const LANE = /^(\w+)_tool_execute_(read|write|delete)$/;
+// Schema keywords whose values are instance data, and those that map names to
+// subschemas (a parameter may be called "default").
+const DATA = new Set(["default", "examples", "const", "enum"]);
+const NAMED = new Set(["properties", "patternProperties", "$defs", "definitions", "dependentSchemas"]);
 
 export interface Tool {
   name: string;
@@ -61,13 +65,14 @@ export function laneOf(tool: Tool): "read" | "write" | "delete" {
   return tool.annotations?.destructiveHint === true ? "delete" : "write";
 }
 
-/** Every description string anywhere in a JSON Schema, with its path. */
-function schemaDescriptions(node: unknown, at: string, out: [string, string][] = []): [string, string][] {
+/** Every description string in a JSON Schema and its subschemas, with its path; instance data is skipped. */
+function schemaDescriptions(node: unknown, at: string, out: [string, string][] = [], named = false): [string, string][] {
   if (Array.isArray(node)) node.forEach((child, i) => schemaDescriptions(child, `${at}[${i}]`, out));
   else if (node && typeof node === "object") {
     for (const [key, value] of Object.entries(node)) {
-      if (key === "description" && typeof value === "string") out.push([at, value]);
-      else schemaDescriptions(value, `${at}.${key}`, out);
+      if (named) schemaDescriptions(value, `${at}.${key}`, out);
+      else if (key === "description" && typeof value === "string") out.push([at, value]);
+      else if (!DATA.has(key)) schemaDescriptions(value, `${at}.${key}`, out, NAMED.has(key));
     }
   }
   return out;
@@ -88,7 +93,7 @@ function checkTool(tool: Tool, problems: Problem[]): void {
   if (!description.trim()) say("no description");
   else {
     if (description.length > CUT) say(`the description is ${description.length} characters; Claude Code drops everything past ${CUT}`);
-    if (!description.includes("Returns:")) say("no Returns: line, the only output documentation Claude Code shows the model");
+    if (!/^\s*Returns:/m.test(description)) say("no Returns: line, the only output documentation Claude Code shows the model");
     if (/^\s*Args:/m.test(description)) say("an Args: block: describe each parameter in its inputSchema instead");
   }
 
@@ -115,8 +120,8 @@ function checkListing(tools: Tool[], problems: Problem[]): void {
   const prefixOf = (re: RegExp) => listed.map((t) => re.exec(t.name)?.[1]).find((p) => p !== undefined);
   const prefix = prefixOf(CATALOG.list) ?? prefixOf(CATALOG.search) ?? prefixOf(LANE);
   const lanes = new Set(listed.map((t) => LANE.exec(t.name)).filter((m) => m && m[1] === prefix).map((m) => m![2]));
-  const gateway = listed.filter((t) => prefix !== undefined && (t.name.startsWith(`${prefix}_tools_`) || t.name.startsWith(`${prefix}_tool_execute_`)));
-  const own = listed.length - gateway.length;
+  const gateway = prefix === undefined ? [] : ["tools_list", "tools_search", "tool_execute_read", "tool_execute_write", "tool_execute_delete"].map((part) => `${prefix}_${part}`);
+  const own = listed.filter((t) => !gateway.includes(t.name)).length;
 
   if (own > MAX_LISTED) {
     problems.push({ message: `${own} tools listed: list at most ${MAX_LISTED} and serve the rest through the catalog (_tools_list, _tools_search, _tool_execute_<read|write|delete>, as scenario-mcp does), marked with _meta {"${LISTING}": "catalog"}` });
@@ -161,7 +166,8 @@ export function measure(snapshot: Snapshot): { tools: number; listed: number; by
 
 export function read(file: string): Snapshot {
   const snapshot = JSON.parse(fs.readFileSync(file, "utf8")) as Snapshot;
-  if (!snapshot || !Array.isArray(snapshot.tools) || snapshot.tools.some((t) => typeof t?.name !== "string")) {
+  const shaped = snapshot && Array.isArray(snapshot.tools) && snapshot.tools.every((t) => typeof t?.name === "string");
+  if (!shaped || (snapshot.instructions !== undefined && typeof snapshot.instructions !== "string")) {
     throw new Error(`${file}: expected {"instructions"?: string, "tools": [{"name": ..., ...}]}, the server's tools as tools/list sends them`);
   }
   return snapshot;

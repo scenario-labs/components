@@ -6,7 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { check, measure, CUT, MAX_INPUT_SCHEMA_BYTES, MAX_LISTED, type Snapshot, type Tool } from "../src/mcp/check.ts";
+import { check, measure, CUT, MAX_INPUT_SCHEMA_BYTES, MAX_LISTED, MAX_PROPERTY_DESCRIPTION, type Snapshot, type Tool } from "../src/mcp/check.ts";
 
 const FIXTURES = path.join(import.meta.dirname, "fixtures", "mcp");
 const CLI = path.join(import.meta.dirname, "..", "bin", "components.mjs");
@@ -48,6 +48,8 @@ test("descriptions fit Claude Code's cut, say what they return, and leave parame
   const long = messages(changed("demo_status", (t) => (t.description = `${"x".repeat(CUT)}\nReturns: y`)));
   assert.match(long.join("\n"), new RegExp(`demo_status: the description is ${CUT + 11} characters`));
   assert.match(messages(changed("demo_status", (t) => (t.description = "Who is signed in."))).join("\n"), /demo_status: no Returns: line/);
+  assert.match(messages(changed("demo_status", (t) => (t.description = "Explains the literal Returns: marker."))).join("\n"), /demo_status: no Returns: line/, "a line starts with it");
+  assert.deepEqual(check(changed("demo_status", (t) => (t.description = "Who is signed in.\n  Returns: the account."))), [], "indented counts");
   assert.match(messages(changed("demo_status", (t) => (t.description += "\nArgs:\n  model_id: the model"))).join("\n"), /an Args: block/);
   assert.match(messages(changed("demo_status", (t) => (t.description = " "))).join("\n"), /demo_status: no description/);
 });
@@ -62,6 +64,13 @@ test("input schemas stay small, every parameter is snake_case and described", ()
   const big = messages(changed("demo_generate", (t) => ((t.inputSchema!.properties as Record<string, unknown>).prompt = { type: "string", description: "x".repeat(MAX_INPUT_SCHEMA_BYTES) })));
   assert.match(big.join("\n"), /inputSchema is \d+ B, over 4500 B/);
   assert.match(big.join("\n"), /inputSchema\.properties\.prompt: the description is 4500 characters, over 1024/);
+  const long = "x".repeat(MAX_PROPERTY_DESCRIPTION + 1);
+  const data = messages(changed("demo_generate", (t) => {
+    const properties = t.inputSchema!.properties as Record<string, unknown>;
+    properties.style = { type: "object", description: "The style.", default: { description: long }, examples: [{ description: long }] };
+    properties.default = { type: "string", description: long };
+  }));
+  assert.deepEqual(data, [`demo_generate: inputSchema.properties.default: the description is ${long.length} characters, over ${MAX_PROPERTY_DESCRIPTION}`], "instance data holds no description, a parameter called default does");
   const params = messages(changed("demo_generate", (t) => ((t.inputSchema!.properties as Record<string, unknown>).modelId = { type: "string" })));
   assert.deepEqual(params, ["demo_generate: parameter modelId is not snake_case", "demo_generate: parameter modelId has no description"]);
   assert.match(messages(changed("demo_generate", (t) => (t.inputSchema = { type: "string" }))).join("\n"), /must be a JSON Schema of type "object"/);
@@ -79,6 +88,8 @@ test("more than 30 listed tools go behind the catalog", () => {
   const extra = (i: number): Tool => ({ ...snapshot.tools[0]!, name: `demo_extra_${i}` });
   snapshot.tools.push(...Array.from({ length: MAX_LISTED - 2 }, (_, i) => extra(i)));
   assert.deepEqual(check(snapshot), [], "30 of the server's own, plus the catalog's");
+  const lookalike = { ...snapshot, tools: [...snapshot.tools, { ...snapshot.tools[0]!, name: "demo_tools_export" }] };
+  assert.match(messages(lookalike).join("\n"), /^: 31 tools listed/m, "only the catalog's own names are left out");
   snapshot.tools.push(extra(MAX_LISTED));
   assert.match(messages(snapshot).join("\n"), /^: 31 tools listed: list at most 30/m);
   snapshot.tools.at(-1)!._meta = { "scenario.com/listing": "catalog" };
@@ -108,5 +119,9 @@ test("the command prints the problems and the sizes, and fails on a problem", ()
   const shape = run(path.join(dir, "list.json"));
   assert.equal(shape.status, 1);
   assert.match(shape.stderr, /expected \{"instructions"\?: string, "tools": /);
+  fs.writeFileSync(path.join(dir, "instructions.json"), JSON.stringify({ instructions: false, tools: [] }));
+  const instructions = run(path.join(dir, "instructions.json"));
+  assert.equal(instructions.status, 1);
+  assert.match(instructions.stderr, /expected \{"instructions"\?: string, "tools": /);
   assert.equal(spawnSync(process.execPath, [CLI, "mcp-check"], { encoding: "utf8" }).status, 2);
 });
